@@ -14,102 +14,109 @@
       <section class="stage" aria-label="Traffic simulation canvas">
         <header class="topbar">
           <div>
-            <h1>Traffic Simulation Console</h1>
-            <p>Compare intersection flow with highway traffic and delayed braking effects.</p>
+            <h1 data-i18n="title">Traffic Simulation Console</h1>
+            <p data-i18n="subtitle">Compare intersection flow with highway traffic and delayed braking effects.</p>
           </div>
           <div class="run-controls">
+            <label class="language-picker">
+              <span data-i18n="language">Language</span>
+              <select id="language" aria-label="Language">
+                <option value="en">English</option>
+                <option value="zh-TW">繁體中文</option>
+              </select>
+            </label>
             <button id="toggleRun" type="button">Pause</button>
-            <button id="resetRun" type="button">Reset</button>
+            <button id="resetRun" type="button" data-i18n="reset">Reset</button>
           </div>
         </header>
 
         <div class="canvas-wrap">
           <canvas id="trafficCanvas" width="1120" height="720">
-            <p>Your browser does not support Canvas. Please upgrade your browser and try again.</p>
+            <p>Your browser does not support Canvas. Please upgrade your browser and try again.<br>您的瀏覽器不支援 Canvas，請升級後重新載入。</p>
           </canvas>
         </div>
       </section>
 
       <aside class="panel" aria-label="Simulation parameters">
         <section>
-          <h2>Live Metrics</h2>
+          <h2 data-i18n="metrics">Live Metrics</h2>
           <p id="trafficStatus" class="sr-only" aria-live="polite"></p>
           <div class="metrics">
             <div>
-              <span>Average Speed</span>
+              <span data-i18n="averageSpeed">Average Speed</span>
               <strong id="avgSpeed">0 km/h</strong>
             </div>
             <div>
-              <span>Vehicles in Network</span>
+              <span data-i18n="vehiclesInNetwork">Vehicles in Network</span>
               <strong id="vehicleCount">0</strong>
             </div>
             <div>
-              <span>Queue Length</span>
+              <span data-i18n="queueLength">Queue Length</span>
               <strong id="queueLength">0</strong>
             </div>
             <div>
-              <span>Completed Trips</span>
+              <span data-i18n="completedTrips">Completed Trips</span>
               <strong id="completedTrips">0</strong>
             </div>
           </div>
         </section>
 
         <section class="controls">
-          <h2>Scenario Controls</h2>
+          <h2 data-i18n="scenarioControls">Scenario Controls</h2>
           <label>
-            <span>Roadway Mode</span>
+            <span data-i18n="roadwayMode">Roadway Mode</span>
             <select id="mode">
-              <option value="intersection">Intersection</option>
-              <option value="highway">Highway</option>
+              <option value="intersection" data-i18n="intersection">Intersection</option>
+              <option value="highway" data-i18n="highway">Highway</option>
             </select>
           </label>
           <label>
-            <span>Traffic Demand</span>
+            <span data-i18n="trafficDemand">Traffic Demand</span>
             <input id="demand" type="range" min="10" max="95" value="52">
             <output id="demandOut" for="demand">52%</output>
           </label>
           <label>
-            <span>Speed Limit</span>
+            <span data-i18n="speedLimit">Speed Limit</span>
             <input id="speedLimit" type="range" min="25" max="80" value="50">
             <output id="speedOut" for="speedLimit">50 km/h</output>
           </label>
           <label>
-            <span>Signal Cycle</span>
+            <span data-i18n="signalCycle">Signal Cycle</span>
             <input id="signalCycle" type="range" min="18" max="90" value="42">
             <output id="cycleOut" for="signalCycle">42 sec</output>
           </label>
           <label>
-            <span>Green Split</span>
+            <span data-i18n="greenSplit">Green Split</span>
             <input id="greenSplit" type="range" min="35" max="70" value="52">
             <output id="greenOut" for="greenSplit">52%</output>
           </label>
           <label>
-            <span>Driver Reaction Time</span>
+            <span data-i18n="reactionTime">Driver Reaction Time</span>
             <input id="reactionTime" type="range" min="0" max="3" step="0.1" value="1.2" title="Time before the driver begins braking">
             <output id="reactionOut" for="reactionTime">1.2 sec</output>
           </label>
           <label>
-            <span>Brake Build-up Time</span>
+            <span data-i18n="brakeBuildTime">Brake Build-up Time</span>
             <input id="brakeBuildTime" type="range" min="0" max="2" step="0.1" value="0.5" title="Time for braking force to reach full strength">
             <output id="brakeBuildOut" for="brakeBuildTime">0.5 sec</output>
           </label>
           <label class="toggle">
             <input id="incident" type="checkbox">
-            <span>Enable Incident Bottleneck</span>
+            <span data-i18n="incidentBottleneck">Enable Incident Bottleneck</span>
           </label>
           <label class="toggle">
             <input id="busPriority" type="checkbox" checked>
-            <span>Bus Signal Priority</span>
+            <span data-i18n="busPriority">Bus Signal Priority</span>
           </label>
         </section>
 
         <section>
-          <h2>What to Watch</h2>
+          <h2 data-i18n="whatToWatch">What to Watch</h2>
           <ul class="notes">
-            <li>Red road segments show congestion, while yellow segments show lower speeds.</li>
-            <li>The incident bottleneck closes one lane and increases queues.</li>
-            <li>Bus priority extends the green phase when a bus approaches the intersection.</li>
-            <li>Highway braking delay combines reaction time with brake build-up time before deceleration begins.</li>
+            <li data-i18n="noteCongestion">Red road segments show congestion, while yellow segments show lower speeds.</li>
+            <li data-i18n="noteIncident">The incident bottleneck closes one lane and increases queues.</li>
+            <li data-i18n="noteBus">Bus priority extends the green phase when a bus approaches the intersection.</li>
+            <li data-i18n="noteBraking">Highway braking delay combines reaction time with brake build-up time before deceleration begins.</li>
           </ul>
         </section>
       </aside>

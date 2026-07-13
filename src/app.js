@@ -1,14 +1,45 @@
 (function runApp() {
   "use strict";
 
+  const translations = {
+    en: {
+      title: "Traffic Simulation Console", subtitle: "Compare intersection flow with highway traffic and delayed braking effects.",
+      language: "Language", pause: "Pause", resume: "Resume", reset: "Reset", metrics: "Live Metrics",
+      averageSpeed: "Average Speed", vehiclesInNetwork: "Vehicles in Network", queueLength: "Queue Length", completedTrips: "Completed Trips",
+      scenarioControls: "Scenario Controls", roadwayMode: "Roadway Mode", intersection: "Intersection", highway: "Highway",
+      trafficDemand: "Traffic Demand", speedLimit: "Speed Limit", signalCycle: "Signal Cycle", greenSplit: "Green Split",
+      reactionTime: "Driver Reaction Time", brakeBuildTime: "Brake Build-up Time", incidentBottleneck: "Enable Incident Bottleneck", busPriority: "Bus Signal Priority",
+      whatToWatch: "What to Watch", noteCongestion: "Red road segments show congestion, while yellow segments show lower speeds.",
+      noteIncident: "The incident bottleneck closes one lane and increases queues.", noteBus: "Bus priority extends the green phase when a bus approaches the intersection.",
+      noteBraking: "Highway braking delay combines reaction time with brake build-up time before deceleration begins.", highwayLabel: "HIGHWAY",
+      brakingExperiment: "Delayed braking experiment", incident: "Incident", startupTitle: "Traffic simulation failed to start",
+      startupDetail: "Make sure the required files loaded, then refresh the page.", loopError: "The simulation hit an error. Press Reset or refresh the page.",
+      status: "Average speed {speed} km/h, vehicles in network {vehicles}, queue length {queue}, completed trips {trips}", unitKmh: "km/h", unitSec: "sec"
+    },
+    "zh-TW": {
+      title: "交通模擬控制台", subtitle: "比較路口車流、高速公路車流與煞車遞延效應。", language: "語言", pause: "暫停", resume: "繼續", reset: "重設", metrics: "即時指標",
+      averageSpeed: "平均速度", vehiclesInNetwork: "網路車輛數", queueLength: "排隊長度", completedTrips: "完成旅次", scenarioControls: "情境控制",
+      roadwayMode: "道路模式", intersection: "路口", highway: "高速公路", trafficDemand: "交通需求", speedLimit: "速限", signalCycle: "號誌週期", greenSplit: "綠燈比例",
+      reactionTime: "駕駛反應時間", brakeBuildTime: "煞車建立時間", incidentBottleneck: "啟用事故瓶頸", busPriority: "公車號誌優先", whatToWatch: "觀察重點",
+      noteCongestion: "紅色路段代表壅塞，黃色路段代表速度較低。", noteIncident: "事故瓶頸會封閉一個車道並增加排隊。",
+      noteBus: "公車接近路口時，公車優先會延長綠燈時間。", noteBraking: "高速公路煞車遞延由反應時間與煞車建立時間共同決定。",
+      highwayLabel: "高速公路", brakingExperiment: "煞車遞延實驗", incident: "事故", startupTitle: "交通模擬啟動失敗",
+      startupDetail: "請確認必要檔案已載入，然後重新整理頁面。", loopError: "模擬發生錯誤，請按重設或重新整理頁面。",
+      status: "平均速度 {speed} 公里/小時，網路車輛 {vehicles}，排隊長度 {queue}，完成旅次 {trips}", unitKmh: "公里/小時", unitSec: "秒"
+    }
+  };
+  let language = localStorage.getItem("traffic-simulator-language") || "en";
+  if (!translations[language]) language = "en";
+  const t = (key) => translations[language][key] || translations.en[key] || key;
+
   // This script relies on the defer attribute in index.html, so the DOM is fully parsed here.
   function renderStartupError() {
     const main = document.createElement("main");
     const title = document.createElement("h1");
     const detail = document.createElement("p");
     main.className = "startup-error";
-    title.textContent = "Traffic simulation failed to start";
-    detail.textContent = "Make sure the required files loaded, then refresh the page.";
+    title.textContent = t("startupTitle");
+    detail.textContent = t("startupDetail");
     main.append(title, detail);
     document.body.replaceChildren(main);
   }
@@ -91,6 +122,7 @@
     reactionTime: requireElement("reactionTime"),
     brakeBuildTime: requireElement("brakeBuildTime")
   };
+  const languageControl = requireElement("language");
   const outputs = {
     demand: requireElement("demandOut"),
     speedLimit: requireElement("speedOut"),
@@ -181,17 +213,31 @@
 
   function updateOutputs() {
     outputs.demand.textContent = `${controls.demand.value}%`;
-    outputs.speedLimit.textContent = `${controls.speedLimit.value} km/h`;
-    outputs.signalCycle.textContent = `${controls.signalCycle.value} sec`;
+    outputs.speedLimit.textContent = `${controls.speedLimit.value} ${t("unitKmh")}`;
+    outputs.signalCycle.textContent = `${controls.signalCycle.value} ${t("unitSec")}`;
     outputs.greenSplit.textContent = `${controls.greenSplit.value}%`;
-    outputs.reactionTime.textContent = `${controls.reactionTime.value} sec`;
-    outputs.brakeBuildTime.textContent = `${controls.brakeBuildTime.value} sec`;
+    outputs.reactionTime.textContent = `${controls.reactionTime.value} ${t("unitSec")}`;
+    outputs.brakeBuildTime.textContent = `${controls.brakeBuildTime.value} ${t("unitSec")}`;
     const highwayMode = controls.mode.value === "highway";
     controls.reactionTime.disabled = !highwayMode;
     controls.brakeBuildTime.disabled = !highwayMode;
   }
 
+  function applyLanguage(nextLanguage) {
+    language = translations[nextLanguage] ? nextLanguage : "en";
+    localStorage.setItem("traffic-simulator-language", language);
+    document.documentElement.lang = language === "zh-TW" ? "zh-Hant" : "en";
+    languageControl.value = language;
+    for (const element of document.querySelectorAll("[data-i18n]")) {
+      element.textContent = t(element.dataset.i18n);
+    }
+    languageControl.setAttribute("aria-label", t("language"));
+    updateOutputs();
+    toggleRun.textContent = running ? t("pause") : t("resume");
+  }
+
   function bindControls() {
+    languageControl.addEventListener("change", () => applyLanguage(languageControl.value));
     for (const input of Object.values(controls)) {
       input.addEventListener("input", () => {
         updateOutputs();
@@ -214,7 +260,7 @@
     }
     toggleRun.addEventListener("click", () => {
       running = !running;
-      toggleRun.textContent = running ? "Pause" : "Resume";
+      toggleRun.textContent = running ? t("pause") : t("resume");
       pausedSnapshot = running ? null : simulation.getSnapshot();
       lastFrame = performance.now();
     });
@@ -223,7 +269,7 @@
       simulation.reset(readConfig());
       const snapshot = simulation.getSnapshot();
       running = true;
-      toggleRun.textContent = "Pause";
+      toggleRun.textContent = t("pause");
       pausedSnapshot = null;
       loopError = false;
       lastFrame = performance.now();
@@ -233,7 +279,7 @@
         loopError = true;
         running = false;
         console.error("Draw error during reset:", error);
-        renderLoopError("The simulation hit an error. Refresh the page to try again.");
+        renderLoopError(t("loopError"));
         return;
       }
       if (wasErrored) {
@@ -281,7 +327,7 @@
       context.fillRect(incidentX, incidentY, incidentWidth, incidentHeight);
       context.fillStyle = "#fee2e2";
       context.font = "700 15px system-ui";
-      context.fillText("Incident", incidentX + 5, incidentY + incidentHeight * 0.68, incidentWidth - 10);
+      context.fillText(t("incident"), incidentX + 5, incidentY + incidentHeight * 0.68, incidentWidth - 10);
       context.restore();
     }
   }
@@ -302,15 +348,15 @@
     context.setLineDash([]);
     context.fillStyle = "#dbeafe";
     context.font = "600 15px system-ui";
-    context.fillText("HIGHWAY", 24, highway.labelY);
-    context.fillText("Delayed braking experiment", 24, highway.footerY);
+    context.fillText(t("highwayLabel"), 24, highway.labelY);
+    context.fillText(t("brakingExperiment"), 24, highway.footerY);
     const [incidentX, incidentY, incidentWidth, incidentHeight] = highway.incident;
     if (snapshot.config.incident) {
       context.fillStyle = "#ef4444";
       context.fillRect(incidentX, incidentY, incidentWidth, incidentHeight);
       context.fillStyle = "#fee2e2";
       context.font = "700 15px system-ui";
-      context.fillText("Incident", incidentX + 5, incidentY + incidentHeight * 0.68, incidentWidth - 10);
+      context.fillText(t("incident"), incidentX + 5, incidentY + incidentHeight * 0.68, incidentWidth - 10);
     }
   }
 
@@ -409,13 +455,17 @@
   }
 
   function updateMetrics(data) {
-    metrics.avgSpeed.textContent = `${data.averageSpeedKmh} km/h`;
+    metrics.avgSpeed.textContent = `${data.averageSpeedKmh} ${t("unitKmh")}`;
     metrics.vehicleCount.textContent = String(data.vehicleCount);
     metrics.queueLength.textContent = String(data.queueLength);
     metrics.completedTrips.textContent = String(data.completedTrips);
     const now = performance.now();
     if (now - lastA11yUpdate > 1000) {
-      metrics.status.textContent = `Average speed ${data.averageSpeedKmh} km/h, vehicles in network ${data.vehicleCount}, queue length ${data.queueLength}, completed trips ${data.completedTrips}`;
+      metrics.status.textContent = t("status")
+        .replace("{speed}", data.averageSpeedKmh)
+        .replace("{vehicles}", data.vehicleCount)
+        .replace("{queue}", data.queueLength)
+        .replace("{trips}", data.completedTrips);
       lastA11yUpdate = now;
     }
   }
@@ -434,13 +484,13 @@
       loopError = true;
       running = false;
       console.error("Simulation loop error:", error);
-      renderLoopError("The simulation hit an error. Press Reset or refresh the page.");
+      renderLoopError(t("loopError"));
       return;
     }
     requestAnimationFrame(loop);
   }
 
-  updateOutputs();
+  applyLanguage(language);
   bindControls();
   window.removeEventListener("error", startupErrorListener, true);
   requestAnimationFrame(loop);

@@ -81,8 +81,23 @@ h2 {
 }
 
 .run-controls {
+  align-items: end;
   display: flex;
   gap: 10px;
+}
+
+.language-picker {
+  gap: 4px;
+}
+
+.language-picker span {
+  color: #64748b;
+  font-size: 11px;
+}
+
+.language-picker select {
+  min-width: 112px;
+  padding: 7px 8px;
 }
 
 button {
