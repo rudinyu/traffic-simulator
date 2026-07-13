@@ -84,8 +84,8 @@
   function laneCenterOffset(mode, direction, lane) {
     if (direction === "east") return lane === 0 ? 0 : -LANE_WIDTH_PX;
     if (direction === "west") return lane === 0 ? 0 : LANE_WIDTH_PX;
-    if (mode !== "highway" && direction === "south") return lane === 0 ? 0 : LANE_WIDTH_PX;
-    if (mode !== "highway" && direction === "north") return lane === 0 ? 0 : -LANE_WIDTH_PX;
+    if (mode !== "highway" && direction === "south") return lane === 0 ? -18 : 18;
+    if (mode !== "highway" && direction === "north") return lane === 0 ? -18 : 18;
     return 0;
   }
 
