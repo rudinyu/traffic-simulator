@@ -1,97 +1,97 @@
 <!doctype html>
-<html lang="zh-Hant">
+<html lang="en">
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>交通模擬控制台</title>
+    <title>Traffic Simulation Console</title>
     <link rel="stylesheet" href="src/styles.css">
   </head>
   <body>
     <noscript>
-      <p class="noscript">此模擬器需要 JavaScript，請啟用後重新整理頁面。</p>
+      <p class="noscript">This simulator requires JavaScript. Enable it and reload the page.</p>
     </noscript>
     <main class="app-shell">
-      <section class="stage" aria-label="交通模擬畫布">
+      <section class="stage" aria-label="Traffic simulation canvas">
         <header class="topbar">
           <div>
-            <h1>交通模擬控制台</h1>
-            <p>調整車流、號誌與事故條件，觀察路口壅塞與通行效率。</p>
+            <h1>Traffic Simulation Console</h1>
+            <p>Adjust traffic demand, signal timing, and incidents to study congestion and throughput.</p>
           </div>
           <div class="run-controls">
-            <button id="toggleRun" type="button">暫停</button>
-            <button id="resetRun" type="button">重設</button>
+            <button id="toggleRun" type="button">Pause</button>
+            <button id="resetRun" type="button">Reset</button>
           </div>
         </header>
 
         <div class="canvas-wrap">
           <canvas id="trafficCanvas" width="1120" height="720">
-            <p>您的瀏覽器不支援 Canvas，請升級後再試。</p>
+            <p>Your browser does not support Canvas. Please upgrade your browser and try again.</p>
           </canvas>
         </div>
       </section>
 
-      <aside class="panel" aria-label="模擬參數">
+      <aside class="panel" aria-label="Simulation parameters">
         <section>
-          <h2>即時指標</h2>
+          <h2>Live Metrics</h2>
           <p id="trafficStatus" class="sr-only" aria-live="polite"></p>
           <div class="metrics">
             <div>
-              <span>平均速度</span>
+              <span>Average Speed</span>
               <strong id="avgSpeed">0 km/h</strong>
             </div>
             <div>
-              <span>路網車輛</span>
+              <span>Vehicles in Network</span>
               <strong id="vehicleCount">0</strong>
             </div>
             <div>
-              <span>排隊長度</span>
+              <span>Queue Length</span>
               <strong id="queueLength">0</strong>
             </div>
             <div>
-              <span>完成通過</span>
+              <span>Completed Trips</span>
               <strong id="completedTrips">0</strong>
             </div>
           </div>
         </section>
 
         <section class="controls">
-          <h2>情境控制</h2>
+          <h2>Scenario Controls</h2>
           <label>
-            <span>車流量</span>
+            <span>Traffic Demand</span>
             <input id="demand" type="range" min="10" max="95" value="52">
             <output id="demandOut" for="demand">52%</output>
           </label>
           <label>
-            <span>速限</span>
+            <span>Speed Limit</span>
             <input id="speedLimit" type="range" min="25" max="80" value="50">
             <output id="speedOut" for="speedLimit">50 km/h</output>
           </label>
           <label>
-            <span>號誌週期</span>
+            <span>Signal Cycle</span>
             <input id="signalCycle" type="range" min="18" max="90" value="42">
-            <output id="cycleOut" for="signalCycle">42 秒</output>
+            <output id="cycleOut" for="signalCycle">42 sec</output>
           </label>
           <label>
-            <span>綠燈比例</span>
+            <span>Green Split</span>
             <input id="greenSplit" type="range" min="35" max="70" value="52">
             <output id="greenOut" for="greenSplit">52%</output>
           </label>
           <label class="toggle">
             <input id="incident" type="checkbox">
-            <span>啟用事故瓶頸</span>
+            <span>Enable Incident Bottleneck</span>
           </label>
           <label class="toggle">
             <input id="busPriority" type="checkbox" checked>
-            <span>公車優先號誌</span>
+            <span>Bus Signal Priority</span>
           </label>
         </section>
 
         <section>
-          <h2>觀察重點</h2>
+          <h2>What to Watch</h2>
           <ul class="notes">
-            <li>紅色路段代表壅塞，黃色代表車速下降。</li>
-            <li>事故瓶頸會關閉一條車道並增加排隊。</li>
-            <li>公車優先會在公車接近路口時延長綠燈。</li>
+            <li>Red road segments show congestion, while yellow segments show lower speeds.</li>
+            <li>The incident bottleneck closes one lane and increases queues.</li>
+            <li>Bus priority extends the green phase when a bus approaches the intersection.</li>
           </ul>
         </section>
       </aside>

@@ -1,19 +1,27 @@
 # Traffic Simulator
 
-互動式交通模擬軟體，用來觀察路口號誌、車流量、速限、事故瓶頸與公車優先對壅塞的影響。
+An interactive browser-based traffic simulator for studying how signal timing,
+traffic demand, speed limits, incident bottlenecks, and bus priority affect
+intersection congestion and throughput.
 
-## 功能
+## Features
 
-- Canvas 即時呈現四向路口車流。
-- 可調整車流量、速限、號誌週期與綠燈比例。
-- 可啟用事故瓶頸與公車優先號誌。
-- 顯示平均速度、路網車輛數、排隊長度與完成通過數。
+- Real-time Canvas visualization of four-way intersection traffic.
+- Adjustable traffic demand, speed limit, signal cycle, and green split.
+- Optional incident bottleneck and bus signal priority scenarios.
+- Live average speed, vehicle count, queue length, and completed trip metrics.
 
-## 使用
+## Live Demo
 
-直接開啟 `index.html` 即可執行。
+Run it on GitHub Pages:
 
-開發與 CI 檢查：
+<https://rudinyu.github.io/traffic-simulator/>
+
+## Local Usage
+
+Open `index.html` directly in a browser.
+
+Development and CI checks:
 
 ```bash
 npm test

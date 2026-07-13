@@ -7,8 +7,8 @@
     const title = document.createElement("h1");
     const detail = document.createElement("p");
     main.className = "startup-error";
-    title.textContent = "交通模擬無法啟動";
-    detail.textContent = "請確認必要檔案已載入後重新整理頁面。";
+    title.textContent = "Traffic simulation failed to start";
+    detail.textContent = "Make sure the required files loaded, then refresh the page.";
     main.append(title, detail);
     document.body.replaceChildren(main);
   }
@@ -162,7 +162,7 @@
   function updateOutputs() {
     outputs.demand.textContent = `${controls.demand.value}%`;
     outputs.speedLimit.textContent = `${controls.speedLimit.value} km/h`;
-    outputs.signalCycle.textContent = `${controls.signalCycle.value} 秒`;
+    outputs.signalCycle.textContent = `${controls.signalCycle.value} sec`;
     outputs.greenSplit.textContent = `${controls.greenSplit.value}%`;
   }
 
@@ -182,7 +182,7 @@
     }
     toggleRun.addEventListener("click", () => {
       running = !running;
-      toggleRun.textContent = running ? "暫停" : "繼續";
+      toggleRun.textContent = running ? "Pause" : "Resume";
       pausedSnapshot = running ? null : simulation.getSnapshot();
       lastFrame = performance.now();
     });
@@ -191,7 +191,7 @@
       simulation.reset(readConfig());
       const snapshot = simulation.getSnapshot();
       running = true;
-      toggleRun.textContent = "暫停";
+      toggleRun.textContent = "Pause";
       pausedSnapshot = null;
       loopError = false;
       lastFrame = performance.now();
@@ -201,7 +201,7 @@
         loopError = true;
         running = false;
         console.error("Draw error during reset:", error);
-        renderLoopError("模擬發生錯誤，請重新整理頁面。");
+        renderLoopError("The simulation hit an error. Refresh the page to try again.");
         return;
       }
       if (wasErrored) {
@@ -245,7 +245,7 @@
       context.fillRect(incidentX, incidentY, incidentWidth, incidentHeight);
       context.fillStyle = "#fee2e2";
       context.font = "700 15px system-ui";
-      context.fillText("事故", incidentX + incidentWidth * 0.2, incidentY + incidentHeight * 0.68);
+      context.fillText("Incident", incidentX + 5, incidentY + incidentHeight * 0.68, incidentWidth - 10);
       context.restore();
     }
   }
@@ -348,7 +348,7 @@
     metrics.completedTrips.textContent = String(data.completedTrips);
     const now = performance.now();
     if (now - lastA11yUpdate > 1000) {
-      metrics.status.textContent = `平均速度 ${data.averageSpeedKmh} km/h，路網車輛 ${data.vehicleCount}，排隊長度 ${data.queueLength}，完成通過 ${data.completedTrips}`;
+      metrics.status.textContent = `Average speed ${data.averageSpeedKmh} km/h, vehicles in network ${data.vehicleCount}, queue length ${data.queueLength}, completed trips ${data.completedTrips}`;
       lastA11yUpdate = now;
     }
   }
@@ -367,7 +367,7 @@
       loopError = true;
       running = false;
       console.error("Simulation loop error:", error);
-      renderLoopError("模擬發生錯誤，請按重設按鈕或重新整理頁面。");
+      renderLoopError("The simulation hit an error. Press Reset or refresh the page.");
       return;
     }
     requestAnimationFrame(loop);
