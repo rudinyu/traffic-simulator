@@ -15,6 +15,8 @@ intersection congestion, highway flow, throughput, and delayed braking.
 - Adjustable driver reaction time and brake build-up time to study braking delay.
 - Physics-based acceleration, braking distance, lane following, and collision response.
 - Two lanes per direction with predictive collision avoidance and intersection clearance phases.
+- Shared roadway data model used by both the simulation engine and Canvas renderer.
+- Reproducible scenario seeds and JSON snapshot export for demos, reports, and regression checks.
 - Live average speed, vehicle count, queue length, and completed trip metrics.
 
 ## Live Demo
@@ -46,6 +48,8 @@ npm run check
 - 高速公路模式可調整駕駛反應時間與煞車建立時間。
 - 使用物理式加速度、煞車距離、跟車安全距離與碰撞反應。
 - 每個方向兩條車道，具備碰撞預測與路口清空號誌階段。
+- 模擬核心與 Canvas 畫面共用同一份道路資料模型，降低道路切割錯位。
+- 支援情境 seed 與 JSON 快照匯出，方便重現 demo、報告與回歸測試。
 - 可啟用事故瓶頸與公車號誌優先情境。
 - 即時顯示平均速度、網路車輛數、排隊長度與完成旅次。
 

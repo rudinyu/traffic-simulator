@@ -120,6 +120,18 @@
             <input id="busPriority" type="checkbox" checked>
             <span data-i18n="busPriority">Bus Signal Priority</span>
           </label>
+          <label>
+            <span data-i18n="scenarioSeed">Scenario Seed</span>
+            <input id="scenarioSeed" type="text" maxlength="64" autocomplete="off" aria-describedby="seedHint">
+            <span id="seedHint" class="sr-only" data-i18n="seedRestartHint">Changing the seed restarts the scenario.</span>
+          </label>
+          <div class="scenario-actions">
+            <button id="exportScenario" type="button" data-i18n="exportScenario">Export JSON</button>
+          </div>
+          <label>
+            <span data-i18n="scenarioJson">Scenario JSON Snapshot</span>
+            <textarea id="scenarioOutput" readonly rows="7" spellcheck="false"></textarea>
+          </label>
         </section>
 
         <section>

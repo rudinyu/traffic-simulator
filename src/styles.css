@@ -35,7 +35,8 @@ body {
 
 button,
 input,
-select {
+select,
+textarea {
   font: inherit;
 }
 
@@ -110,7 +111,8 @@ button {
 
 button:focus-visible,
 input:focus-visible,
-select:focus-visible {
+select:focus-visible,
+textarea:focus-visible {
   outline: 2px solid #0f766e;
   outline-offset: 2px;
 }
@@ -199,13 +201,30 @@ input[type="range"] {
   width: 100%;
 }
 
-select {
+input[type="text"],
+select,
+textarea {
   background: #ffffff;
   border: 1px solid #cbd5e1;
   border-radius: 6px;
   color: #18212f;
   padding: 8px 10px;
   width: 100%;
+}
+
+textarea {
+  min-height: 136px;
+  resize: vertical;
+}
+
+.scenario-actions {
+  display: flex;
+  justify-content: flex-start;
+}
+
+.scenario-actions button {
+  background: #0f766e;
+  color: white;
 }
 
 output {

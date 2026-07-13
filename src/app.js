@@ -9,6 +9,7 @@
       scenarioControls: "Scenario Controls", roadwayMode: "Roadway Mode", intersection: "Intersection", highway: "Highway", signalStatus: "Signal status", ewGreen: "East-West GREEN", nsGreen: "North-South GREEN", allRed: "ALL RED",
       trafficDemand: "Traffic Demand", speedLimit: "Speed Limit", signalCycle: "Signal Cycle", greenSplit: "Green Split",
       reactionTime: "Driver Reaction Time", brakeBuildTime: "Brake Build-up Time", incidentBottleneck: "Enable Incident Bottleneck", busPriority: "Bus Signal Priority",
+      scenarioSeed: "Scenario Seed", seedRestartHint: "Changing the seed restarts the scenario.", exportScenario: "Export JSON", scenarioJson: "Scenario JSON Snapshot", scenarioPlaceholder: "Export JSON to capture the current scenario.",
       whatToWatch: "What to Watch", noteCongestion: "Red road segments show congestion, while yellow segments show lower speeds.",
       noteIncident: "The incident bottleneck closes one lane and increases queues.", noteBus: "Bus priority extends the green phase when a bus approaches the intersection.",
       noteBraking: "Highway braking delay combines reaction time with brake build-up time before deceleration begins.", highwayLabel: "HIGHWAY",
@@ -20,7 +21,8 @@
       title: "交通模擬控制台", subtitle: "比較路口車流、高速公路車流與煞車遞延效應。", language: "語言", pause: "暫停", resume: "繼續", reset: "重設", metrics: "即時指標",
       averageSpeed: "平均速度", vehiclesInNetwork: "網路車輛數", queueLength: "排隊長度", brakingVehicles: "煞車中車輛", collisionVehicles: "碰撞車輛", collisionSeverity: "碰撞衝擊速度", completedTrips: "完成旅次", scenarioControls: "情境控制",
       roadwayMode: "道路模式", intersection: "路口", highway: "高速公路", signalStatus: "號誌狀態", ewGreen: "東西向綠燈", nsGreen: "南北向綠燈", allRed: "全紅清空", trafficDemand: "交通需求", speedLimit: "速限", signalCycle: "號誌週期", greenSplit: "綠燈比例",
-      reactionTime: "駕駛反應時間", brakeBuildTime: "煞車建立時間", incidentBottleneck: "啟用事故瓶頸", busPriority: "公車號誌優先", whatToWatch: "觀察重點",
+      reactionTime: "駕駛反應時間", brakeBuildTime: "煞車建立時間", incidentBottleneck: "啟用事故瓶頸", busPriority: "公車號誌優先",
+      scenarioSeed: "情境 Seed", seedRestartHint: "變更 seed 會重新開始情境。", exportScenario: "匯出 JSON", scenarioJson: "情境 JSON 快照", scenarioPlaceholder: "匯出 JSON 以擷取目前情境。", whatToWatch: "觀察重點",
       noteCongestion: "紅色路段代表壅塞，黃色路段代表速度較低。", noteIncident: "事故瓶頸會封閉一個車道並增加排隊。",
       noteBus: "公車接近路口時，公車優先會延長綠燈時間。", noteBraking: "高速公路煞車遞延由反應時間與煞車建立時間共同決定。",
       highwayLabel: "高速公路", brakingExperiment: "煞車遞延實驗", incident: "事故", startupTitle: "交通模擬啟動失敗",
@@ -143,6 +145,9 @@
   };
   const toggleRun = requireElement("toggleRun");
   const resetRun = requireElement("resetRun");
+  const seedControl = requireElement("scenarioSeed");
+  const exportScenario = requireElement("exportScenario");
+  const scenarioOutput = requireElement("scenarioOutput");
   // Queue-count thresholds used only for visual congestion overlays.
   const congestionOverlayThreshold = 2;
   const congestionHeavyThreshold = 8;
@@ -153,52 +158,33 @@
     north: (3 * Math.PI) / 2
   };
 
-  // Canvas coordinates are pixels in the fixed 1120x720 simulation space.
-  // Lane centers and stop lines must stay aligned with ROUTES and STOP_LINES in src/simulation.js.
-  const layout = {
-    horizontalRoadY: 276,
-    verticalRoadX: 476,
-    roadWidth: 170,
-    centerX: 560,
-    centerY: 360,
-    intersection: [492, 292, 138, 138],
-    signals: [
-      [464, 250, "ew"],
-      [656, 454, "ew"],
-      [438, 450, "ns"],
-      [676, 250, "ns"]
-    ],
-    incident: [742, 306, 58, 34],
-    congestionOverlays: {
-      east: [120, 296, 380, 48],
-      west: [620, 376, 380, 48],
-      south: [501, 70, 48, 230],
-      north: [571, 420, 48, 230]
-    },
-    highway: {
-      roadY: 234,
-      roadHeight: 228,
-      dividerY: 348,
-      incident: [742, 292, 58, 44],
-      congestionOverlays: {
-        east: [0, 282, 1120, 48],
-        west: [0, 366, 1120, 48]
-      },
-      labelY: 264,
-      footerY: 500
-    }
-  };
-
-  if (!window.TrafficSimulatorLib || !window.TrafficSimulatorLib.TrafficSimulation) {
+  if (
+    !window.TrafficSimulatorLib ||
+    !window.TrafficSimulatorLib.TrafficSimulation ||
+    !window.TrafficSimulatorLib.ROAD_MODEL ||
+    !window.TrafficSimulatorLib.DEFAULT_CONFIG ||
+    !window.TrafficSimulatorLib.normalizeSeed
+  ) {
     throw new Error("TrafficSimulatorLib failed to load. Check that src/simulation.js is present.");
   }
 
-  const simulation = new window.TrafficSimulatorLib.TrafficSimulation();
+  const layout = window.TrafficSimulatorLib.ROAD_MODEL.layout;
+  const normalizeSeed = window.TrafficSimulatorLib.normalizeSeed;
+  let committedSeed;
+  commitSeedFromControl();
+  const simulation = new window.TrafficSimulatorLib.TrafficSimulation({ config: { seed: committedSeed } });
   let running = true;
   let lastFrame = performance.now();
   let lastA11yUpdate = 0;
   let pausedSnapshot = null;
   let loopError = false;
+
+  function commitSeedFromControl() {
+    const seed = normalizeSeed(seedControl.value);
+    committedSeed = seed;
+    seedControl.value = seed;
+    return seed;
+  }
 
   function readConfig() {
     return {
@@ -210,7 +196,8 @@
       incident: controls.incident.checked,
       busPriority: controls.busPriority.checked,
       reactionTime: Number(controls.reactionTime.value),
-      brakeBuildTime: Number(controls.brakeBuildTime.value)
+      brakeBuildTime: Number(controls.brakeBuildTime.value),
+      seed: committedSeed
     };
   }
 
@@ -235,8 +222,52 @@
       element.textContent = t(element.dataset.i18n);
     }
     languageControl.setAttribute("aria-label", t("language"));
+    scenarioOutput.setAttribute("placeholder", t("scenarioPlaceholder"));
     updateOutputs();
     toggleRun.textContent = running ? t("pause") : t("resume");
+    exportScenario.textContent = t("exportScenario");
+  }
+
+  function writeScenarioOutput() {
+    const data = simulation.serializeScenario();
+    const json = JSON.stringify(data, null, 2);
+    scenarioOutput.value = json;
+    return json;
+  }
+
+  function clearScenarioOutput() {
+    scenarioOutput.value = "";
+  }
+
+  function seedForFilename(seed) {
+    return seed.replace(/[^a-z0-9_-]+/gi, "-").replace(/-+/g, "-").replace(/^-|-$/g, "") || "scenario";
+  }
+
+  function restartSimulation(options) {
+    const opts = options || {};
+    const nextRunning = opts.forceRunning ? true : running;
+    const wasErrored = loopError;
+    simulation.reset(readConfig());
+    const snapshot = simulation.getSnapshot();
+    running = nextRunning;
+    toggleRun.textContent = running ? t("pause") : t("resume");
+    pausedSnapshot = running ? null : snapshot;
+    clearScenarioOutput();
+    loopError = false;
+    lastFrame = performance.now();
+    try {
+      draw(snapshot);
+    } catch (error) {
+      loopError = true;
+      running = false;
+      console.error("Draw error during reset:", error);
+      renderLoopError(t("loopError"));
+      return;
+    }
+    if (wasErrored) {
+      // Normal operation already has an active RAF loop; only restart after error shutdown.
+      requestAnimationFrame(loop);
+    }
   }
 
   function bindControls() {
@@ -259,8 +290,28 @@
           // Clear the paused snapshot reference while the live loop owns rendering.
           pausedSnapshot = null;
         }
+        clearScenarioOutput();
       });
     }
+    // Use change rather than input so typing a seed does not reset traffic on every keystroke.
+    seedControl.addEventListener("change", () => {
+      const previousSeed = committedSeed;
+      commitSeedFromControl();
+      if (committedSeed === previousSeed) return;
+      restartSimulation();
+    });
+    exportScenario.addEventListener("click", () => {
+      const json = writeScenarioOutput();
+      const blob = new Blob([json], { type: "application/json" });
+      const link = document.createElement("a");
+      const url = URL.createObjectURL(blob);
+      link.href = url;
+      link.download = `traffic-scenario-${seedForFilename(committedSeed)}.json`;
+      document.body.append(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 0);
+    });
     toggleRun.addEventListener("click", () => {
       running = !running;
       toggleRun.textContent = running ? t("pause") : t("resume");
@@ -268,27 +319,8 @@
       lastFrame = performance.now();
     });
     resetRun.addEventListener("click", () => {
-      const wasErrored = loopError;
-      simulation.reset(readConfig());
-      const snapshot = simulation.getSnapshot();
-      running = true;
-      toggleRun.textContent = t("pause");
-      pausedSnapshot = null;
-      loopError = false;
-      lastFrame = performance.now();
-      try {
-        draw(snapshot);
-      } catch (error) {
-        loopError = true;
-        running = false;
-        console.error("Draw error during reset:", error);
-        renderLoopError(t("loopError"));
-        return;
-      }
-      if (wasErrored) {
-        // Normal operation already has an active RAF loop; only restart after error shutdown.
-        requestAnimationFrame(loop);
-      }
+      commitSeedFromControl();
+      restartSimulation({ forceRunning: true });
     });
   }
 

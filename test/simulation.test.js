@@ -2,10 +2,13 @@ const assert = require("assert");
 const {
   TrafficSimulation,
   ROUTES,
+  HIGHWAY_ROUTES,
+  ROAD_MODEL,
   STOP_LINES,
   MAX_STEP_SECONDS,
   signalState,
-  clamp
+  clamp,
+  normalizeSeed
 } = require("../src/simulation");
 
 function deterministicRandom() {
@@ -35,6 +38,13 @@ runTest("clamp constrains values", () => {
   assert.strictEqual(clamp(7, 0, 10), 7);
 });
 
+runTest("normalizeSeed trims, preserves zero, and clamps length", () => {
+  assert.strictEqual(normalizeSeed("  demo  "), "demo");
+  assert.strictEqual(normalizeSeed(0), "0");
+  assert.strictEqual(normalizeSeed("x".repeat(80)).length, 64);
+  assert.strictEqual(normalizeSeed(""), "demo-traffic");
+});
+
 runTest("signal alternates between east-west and north-south", () => {
   const config = { signalCycle: 40, greenSplit: 50, busPriority: false };
   assert.strictEqual(signalState(5, config, null).ew, "green");
@@ -47,6 +57,14 @@ runTest("bus priority can extend either signal phase", () => {
   assert.strictEqual(signalState(23, config, "ew").ew, "green");
   assert.strictEqual(signalState(16, config, "ns").ew, "red");
   assert.strictEqual(signalState(16, config, "ns").ns, "green");
+});
+
+runTest("road model is the single source for route and layout alignment", () => {
+  assert.strictEqual(ROAD_MODEL.routes.intersection.east, ROUTES.east);
+  assert.strictEqual(ROAD_MODEL.routes.highway.east, HIGHWAY_ROUTES.east);
+  assert.deepStrictEqual(ROAD_MODEL.layout.intersection, [492, 292, 138, 138]);
+  assert.strictEqual(ROAD_MODEL.bounds.incident.startX, 742);
+  assert.strictEqual(ROAD_MODEL.stopLines.east, STOP_LINES.east);
 });
 
 runTest("disabled bus priority leaves base timing unchanged", () => {
@@ -192,6 +210,25 @@ runTest("setConfig preserves per-vehicle speed ratios", () => {
   for (const vehicle of sim.vehicles) {
     assert.strictEqual(vehicle.speed, (30 / 3.6) * vehicle.speedRatio);
   }
+});
+
+runTest("setConfig with the same seed does not restart the random stream", () => {
+  const sim = new TrafficSimulation({ config: { seed: "stable-stream" } });
+  sim.random();
+  sim.setConfig({ seed: "stable-stream", demand: 60 });
+  const continuedValue = sim.random();
+  const comparison = new TrafficSimulation({ config: { seed: "stable-stream" } });
+  comparison.random();
+  assert.strictEqual(continuedValue, comparison.random());
+});
+
+runTest("setConfig mode changes restart the seeded random stream", () => {
+  const sim = new TrafficSimulation({ config: { seed: "mode-stream" } });
+  sim.random();
+  sim.setConfig({ mode: "highway" });
+  const restartedValue = sim.random();
+  const comparison = new TrafficSimulation({ config: { seed: "mode-stream", mode: "highway" } });
+  assert.strictEqual(restartedValue, comparison.random());
 });
 
 runTest("reset merges partial config with defaults", () => {
@@ -573,9 +610,50 @@ runTest("highway incident changes to an open adjacent lane", () => {
   };
   sim.vehicles = [vehicle];
   const result = sim.computeTargetSpeed(vehicle, null);
-  assert.strictEqual(vehicle.lane, 1);
+  assert.strictEqual(vehicle.lane, 0);
+  assert.strictEqual(vehicle.targetLane, 1);
+  assert(vehicle.laneChanging, "lane change should remain active until the lateral move finishes");
   assert(result.speed < vehicle.speed, "vehicle should slow while changing away from the incident");
   assert(result.waiting, "vehicle should remain cautious while the lane change is in progress");
+});
+
+runTest("vehicle changing lanes occupies the source and target lane for safety checks", () => {
+  const sim = new TrafficSimulation({
+    random: deterministicRandom(),
+    config: { mode: "highway", incident: true }
+  });
+  const changing = {
+    direction: "east",
+    route: Object.assign({}, HIGHWAY_ROUTES.east),
+    position: 650,
+    speed: 14,
+    currentSpeed: 14,
+    length: 22,
+    lane: 0,
+    targetLane: 1,
+    laneChanging: true,
+    laneChange: { sourceLane: 0, targetLane: 1 },
+    laneOffset: 0,
+    laneTargetOffset: -36,
+    waiting: false
+  };
+  const follower = {
+    direction: "east",
+    route: Object.assign({}, HIGHWAY_ROUTES.east),
+    position: 620,
+    speed: 14,
+    currentSpeed: 14,
+    length: 22,
+    lane: 0,
+    targetLane: 0,
+    laneOffset: 0,
+    laneTargetOffset: 0,
+    waiting: false
+  };
+  sim.vehicles = [changing, follower];
+  const result = sim.computeTargetSpeed(follower, changing);
+  assert(result.speed < follower.speed, "follower must treat a lane-changing vehicle as still occupying the source lane");
+  assert.strictEqual(sim.canChangeIncidentLane(follower), false, "target lane should be blocked by the active lane change");
 });
 
 runTest("highway incident makes vehicles brake when the adjacent lane is occupied", () => {
@@ -635,6 +713,221 @@ runTest("highway incident prevents blocked vehicles from crossing the incident",
   assert(vehicle.position <= 715, "blocked vehicle must stop before the incident marker");
   assert.strictEqual(vehicle.currentSpeed, 0);
   assert(vehicle.waiting, "blocked vehicle should remain waiting");
+});
+
+runTest("same seed reproduces the same scenario state", () => {
+  const first = new TrafficSimulation({ config: { mode: "highway", demand: 80, seed: "morning-demo" } });
+  const second = new TrafficSimulation({ config: { mode: "highway", demand: 80, seed: "morning-demo" } });
+  for (let i = 0; i < 120; i += 1) {
+    first.step(0.08);
+    second.step(0.08);
+  }
+  assert.deepStrictEqual(first.serializeScenario(), second.serializeScenario());
+});
+
+runTest("different seeds produce different spawned traffic", () => {
+  const first = new TrafficSimulation({ config: { mode: "highway", demand: 80, seed: "alpha" } });
+  const second = new TrafficSimulation({ config: { mode: "highway", demand: 80, seed: "beta" } });
+  for (let i = 0; i < 80; i += 1) {
+    first.step(0.08);
+    second.step(0.08);
+  }
+  assert.notDeepStrictEqual(first.serializeScenario().vehicles, second.serializeScenario().vehicles);
+});
+
+runTest("scenario export includes reproducibility metadata and metrics", () => {
+  const sim = new TrafficSimulation({ config: { seed: "export-demo", demand: 70 } });
+  sim.step(0.08);
+  const scenario = sim.serializeScenario();
+  assert.strictEqual(scenario.schemaVersion, 1);
+  assert.strictEqual(scenario.roadModelVersion, ROAD_MODEL.version);
+  assert.strictEqual(scenario.seed, "export-demo");
+  assert.strictEqual(scenario.config.seed, "export-demo");
+  assert.strictEqual(typeof scenario.metrics.vehicleCount, "number");
+  assert(Array.isArray(scenario.vehicles));
+});
+
+runTest("scenario export schema keeps stable top-level and vehicle keys", () => {
+  const sim = new TrafficSimulation({ config: { mode: "highway", demand: 95, seed: "schema-demo" } });
+  for (let i = 0; i < 40; i += 1) {
+    sim.step(0.08);
+  }
+  const scenario = sim.serializeScenario();
+  assert.deepStrictEqual(Object.keys(scenario), [
+    "schemaVersion",
+    "roadModelVersion",
+    "seed",
+    "config",
+    "time",
+    "metrics",
+    "vehicles"
+  ]);
+  assert(scenario.vehicles.length > 0, "expected exported vehicles");
+  assert.deepStrictEqual(Object.keys(scenario.vehicles[0]), [
+    "id",
+    "direction",
+    "lane",
+    "targetLane",
+    "laneChanging",
+    "position",
+    "currentSpeed",
+    "waiting",
+    "braking",
+    "crashed",
+    "collisionSpeedKmh"
+  ]);
+});
+
+runTest("lane-change swept checks do not crash before lateral contact", () => {
+  const sim = new TrafficSimulation({ random: deterministicRandom(), config: { mode: "highway" } });
+  const leader = {
+    direction: "east",
+    route: Object.assign({}, HIGHWAY_ROUTES.east),
+    position: 500,
+    previousPosition: 500,
+    progress: 580,
+    x: 500,
+    y: 270,
+    previousX: 500,
+    previousY: 270,
+    currentSpeed: 10,
+    length: 22,
+    lane: 1,
+    targetLane: 1,
+    crashed: false,
+    waiting: false
+  };
+  const changing = {
+    direction: "east",
+    route: Object.assign({}, HIGHWAY_ROUTES.east),
+    position: 501,
+    previousPosition: 470,
+    progress: 581,
+    x: 501,
+    y: 306,
+    previousX: 470,
+    previousY: 306,
+    currentSpeed: 10.1,
+    length: 22,
+    lane: 0,
+    targetLane: 1,
+    laneChanging: true,
+    laneChange: { sourceLane: 0, targetLane: 1 },
+    laneOffset: 0,
+    laneTargetOffset: -36,
+    crashed: false,
+    waiting: false
+  };
+  sim.vehicles = [leader, changing];
+  sim.detectCollisions();
+  assert.strictEqual(leader.crashed, false);
+  assert.strictEqual(changing.crashed, false);
+});
+
+runTest("step records rear-end impact into a crashed leader", () => {
+  const sim = new TrafficSimulation({
+    random: deterministicRandom(),
+    config: { mode: "highway", demand: 10, speedLimit: 80, reactionTime: 0, brakeBuildTime: 0 }
+  });
+  const leader = {
+    id: 1,
+    direction: "east",
+    route: Object.assign({}, HIGHWAY_ROUTES.east),
+    position: 500,
+    previousPosition: 500,
+    progress: 580,
+    x: 500,
+    y: 306,
+    previousX: 500,
+    previousY: 306,
+    currentSpeed: 0,
+    speed: 0,
+    speedRatio: 0,
+    length: 22,
+    lane: 0,
+    targetLane: 0,
+    laneOffset: 0,
+    laneTargetOffset: 0,
+    laneChanging: false,
+    crashed: true,
+    collisionSpeedKmh: 0,
+    waiting: true
+  };
+  const follower = {
+    id: 2,
+    direction: "east",
+    route: Object.assign({}, HIGHWAY_ROUTES.east),
+    position: 455,
+    previousPosition: 455,
+    progress: 535,
+    x: 455,
+    y: 306,
+    previousX: 455,
+    previousY: 306,
+    currentSpeed: 18,
+    speed: 18,
+    speedRatio: 0.9,
+    length: 22,
+    lane: 0,
+    targetLane: 0,
+    laneOffset: 0,
+    laneTargetOffset: 0,
+    laneChanging: false,
+    braking: false,
+    brakeDelayRemaining: 0,
+    brakeTargetSpeed: 18,
+    crashed: false,
+    collisionSpeedKmh: 0,
+    waiting: false
+  };
+  sim.vehicles = [leader, follower];
+  sim.spawnTimers = { "east:0": 99, "east:1": 99, "west:0": 99, "west:1": 99 };
+  sim.step(0.08);
+  assert(follower.crashed, "fast follower should crash into the stopped obstacle");
+  assert(sim.getMetrics().collisionVehicles >= 2);
+});
+
+runTest("same-lane rear-end collisions are recorded instead of ignored", () => {
+  const sim = new TrafficSimulation({ random: deterministicRandom() });
+  const leader = {
+    direction: "east",
+    route: Object.assign({}, ROUTES.east),
+    position: 500,
+    previousPosition: 500,
+    progress: 580,
+    x: 500,
+    y: 330,
+    previousX: 500,
+    previousY: 330,
+    currentSpeed: 0,
+    length: 22,
+    lane: 0,
+    targetLane: 0,
+    crashed: false,
+    waiting: false
+  };
+  const follower = {
+    direction: "east",
+    route: Object.assign({}, ROUTES.east),
+    position: 498,
+    previousPosition: 460,
+    progress: 578,
+    x: 498,
+    y: 330,
+    previousX: 460,
+    previousY: 330,
+    currentSpeed: 12,
+    length: 22,
+    lane: 0,
+    targetLane: 0,
+    crashed: false,
+    waiting: false
+  };
+  sim.vehicles = [leader, follower];
+  sim.detectCollisions();
+  assert(leader.crashed && follower.crashed, "rear-end overlap must be counted as a collision");
+  assert.strictEqual(follower.currentSpeed, 0);
+  assert.strictEqual(sim.getMetrics().collisionVehicles, 2);
 });
 
 if (failures.length > 0) {
