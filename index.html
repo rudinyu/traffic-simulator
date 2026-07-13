@@ -15,7 +15,7 @@
         <header class="topbar">
           <div>
             <h1>Traffic Simulation Console</h1>
-            <p>Adjust traffic demand, signal timing, and incidents to study congestion and throughput.</p>
+            <p>Compare intersection flow with highway traffic and delayed braking effects.</p>
           </div>
           <div class="run-controls">
             <button id="toggleRun" type="button">Pause</button>
@@ -57,6 +57,13 @@
         <section class="controls">
           <h2>Scenario Controls</h2>
           <label>
+            <span>Roadway Mode</span>
+            <select id="mode">
+              <option value="intersection">Intersection</option>
+              <option value="highway">Highway</option>
+            </select>
+          </label>
+          <label>
             <span>Traffic Demand</span>
             <input id="demand" type="range" min="10" max="95" value="52">
             <output id="demandOut" for="demand">52%</output>
@@ -76,6 +83,16 @@
             <input id="greenSplit" type="range" min="35" max="70" value="52">
             <output id="greenOut" for="greenSplit">52%</output>
           </label>
+          <label>
+            <span>Driver Reaction Time</span>
+            <input id="reactionTime" type="range" min="0" max="3" step="0.1" value="1.2" title="Time before the driver begins braking">
+            <output id="reactionOut" for="reactionTime">1.2 sec</output>
+          </label>
+          <label>
+            <span>Brake Build-up Time</span>
+            <input id="brakeBuildTime" type="range" min="0" max="2" step="0.1" value="0.5" title="Time for braking force to reach full strength">
+            <output id="brakeBuildOut" for="brakeBuildTime">0.5 sec</output>
+          </label>
           <label class="toggle">
             <input id="incident" type="checkbox">
             <span>Enable Incident Bottleneck</span>
@@ -92,6 +109,7 @@
             <li>Red road segments show congestion, while yellow segments show lower speeds.</li>
             <li>The incident bottleneck closes one lane and increases queues.</li>
             <li>Bus priority extends the green phase when a bus approaches the intersection.</li>
+            <li>Highway braking delay combines reaction time with brake build-up time before deceleration begins.</li>
           </ul>
         </section>
       </aside>

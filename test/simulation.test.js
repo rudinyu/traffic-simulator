@@ -242,6 +242,72 @@ runTest("step clamps large deltas", () => {
   assert.strictEqual(sim.time, MAX_STEP_SECONDS);
 });
 
+runTest("highway mode uses opposing east-west traffic without signals", () => {
+  const sim = new TrafficSimulation({
+    random: deterministicRandom(),
+    config: { mode: "highway", demand: 90 }
+  });
+  for (let i = 0; i < 40; i += 1) {
+    sim.step(0.08);
+  }
+  assert(sim.vehicles.length > 0, "expected highway vehicles");
+  assert(sim.vehicles.every((vehicle) => vehicle.direction === "east" || vehicle.direction === "west"));
+  assert.deepStrictEqual(sim.lastSignal, { ew: "green", ns: "green" });
+});
+
+runTest("setConfig safely switches modes with active vehicles", () => {
+  const sim = new TrafficSimulation({ random: deterministicRandom(), config: { demand: 90 } });
+  for (let i = 0; i < 20; i += 1) {
+    sim.step(0.08);
+  }
+  sim.setConfig({ mode: "highway" });
+  assert.strictEqual(sim.vehicles.length, 0);
+  assert.doesNotThrow(() => sim.step(0.08));
+  assert(sim.vehicles.every((vehicle) => vehicle.direction === "east" || vehicle.direction === "west"));
+});
+
+runTest("highway braking delay keeps speed during reaction and brake build-up", () => {
+  const sim = new TrafficSimulation({
+    random: deterministicRandom(),
+    config: { mode: "highway", reactionTime: 1, brakeBuildTime: 0.5 }
+  });
+  const vehicle = {
+    direction: "east",
+    route: { axis: "x", sign: 1, signal: null },
+    currentSpeed: 20,
+    speed: 20,
+    braking: false,
+    brakeDelayRemaining: 0,
+    brakeTargetSpeed: 20
+  };
+  const delayedTarget = sim.applyBrakeDelay(vehicle, 0, 0.08);
+  assert.strictEqual(delayedTarget, 20);
+  assert.strictEqual(vehicle.braking, true);
+  for (let i = 0; i < 20; i += 1) {
+    vehicle.currentSpeed = sim.applyBrakeDelay(vehicle, 0, 0.08);
+  }
+  assert(vehicle.braking, "braking episode should remain active after the delay expires");
+  sim.applyBrakeDelay(vehicle, vehicle.speed, 0.08);
+  assert.strictEqual(vehicle.braking, false);
+});
+
+runTest("highway braking target can recover to an intermediate speed", () => {
+  const sim = new TrafficSimulation({
+    random: deterministicRandom(),
+    config: { mode: "highway", reactionTime: 0, brakeBuildTime: 0 }
+  });
+  const vehicle = {
+    currentSpeed: 20,
+    speed: 20,
+    braking: false,
+    brakeDelayRemaining: 0,
+    brakeTargetSpeed: 20
+  };
+  vehicle.currentSpeed = sim.applyBrakeDelay(vehicle, 5, 0.08);
+  const recoveredTarget = sim.applyBrakeDelay(vehicle, 12, 0.08);
+  assert.strictEqual(recoveredTarget, 12);
+});
+
 runTest("getMetrics calculates average speed and queue length", () => {
   const sim = new TrafficSimulation({ random: deterministicRandom() });
   // Intentional minimal stubs: this isolates getMetrics from movement and spawn behavior.

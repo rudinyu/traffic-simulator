@@ -2,13 +2,15 @@
 
 An interactive browser-based traffic simulator for studying how signal timing,
 traffic demand, speed limits, incident bottlenecks, and bus priority affect
-intersection congestion and throughput.
+intersection congestion, highway flow, throughput, and delayed braking.
 
 ## Features
 
 - Real-time Canvas visualization of four-way intersection traffic.
 - Adjustable traffic demand, speed limit, signal cycle, and green split.
 - Optional incident bottleneck and bus signal priority scenarios.
+- Highway mode with opposing traffic streams and no intersection signals.
+- Adjustable driver reaction time and brake build-up time to study braking delay.
 - Live average speed, vehicle count, queue length, and completed trip metrics.
 
 ## Live Demo

@@ -81,18 +81,23 @@
   trackDprChanges();
   window.addEventListener("resize", handleResize);
   const controls = {
+    mode: requireElement("mode"),
     demand: requireElement("demand"),
     speedLimit: requireElement("speedLimit"),
     signalCycle: requireElement("signalCycle"),
     greenSplit: requireElement("greenSplit"),
     incident: requireElement("incident"),
-    busPriority: requireElement("busPriority")
+    busPriority: requireElement("busPriority"),
+    reactionTime: requireElement("reactionTime"),
+    brakeBuildTime: requireElement("brakeBuildTime")
   };
   const outputs = {
     demand: requireElement("demandOut"),
     speedLimit: requireElement("speedOut"),
     signalCycle: requireElement("cycleOut"),
-    greenSplit: requireElement("greenOut")
+    greenSplit: requireElement("greenOut"),
+    reactionTime: requireElement("reactionOut"),
+    brakeBuildTime: requireElement("brakeBuildOut")
   };
   const metrics = {
     avgSpeed: requireElement("avgSpeed"),
@@ -134,6 +139,18 @@
       west: [620, 376, 380, 48],
       south: [501, 70, 48, 230],
       north: [571, 420, 48, 230]
+    },
+    highway: {
+      roadY: 234,
+      roadHeight: 228,
+      dividerY: 348,
+      incident: [742, 292, 58, 44],
+      congestionOverlays: {
+        east: [0, 282, 1120, 48],
+        west: [0, 366, 1120, 48]
+      },
+      labelY: 264,
+      footerY: 500
     }
   };
 
@@ -150,12 +167,15 @@
 
   function readConfig() {
     return {
+      mode: controls.mode.value,
       demand: Number(controls.demand.value),
       speedLimit: Number(controls.speedLimit.value),
       signalCycle: Number(controls.signalCycle.value),
       greenSplit: Number(controls.greenSplit.value),
       incident: controls.incident.checked,
-      busPriority: controls.busPriority.checked
+      busPriority: controls.busPriority.checked,
+      reactionTime: Number(controls.reactionTime.value),
+      brakeBuildTime: Number(controls.brakeBuildTime.value)
     };
   }
 
@@ -164,13 +184,25 @@
     outputs.speedLimit.textContent = `${controls.speedLimit.value} km/h`;
     outputs.signalCycle.textContent = `${controls.signalCycle.value} sec`;
     outputs.greenSplit.textContent = `${controls.greenSplit.value}%`;
+    outputs.reactionTime.textContent = `${controls.reactionTime.value} sec`;
+    outputs.brakeBuildTime.textContent = `${controls.brakeBuildTime.value} sec`;
+    const highwayMode = controls.mode.value === "highway";
+    controls.reactionTime.disabled = !highwayMode;
+    controls.brakeBuildTime.disabled = !highwayMode;
   }
 
   function bindControls() {
     for (const input of Object.values(controls)) {
       input.addEventListener("input", () => {
         updateOutputs();
-        simulation.setConfig(readConfig());
+        const modeChanged = input === controls.mode;
+        const config = readConfig();
+        if (modeChanged) {
+          // Switching roadway models requires fresh routes and spawn timers.
+          simulation.reset(config);
+        } else {
+          simulation.setConfig(config);
+        }
         if (!running) {
           simulation.refreshSignal(simulation.getPrioritySignal());
           pausedSnapshot = simulation.getSnapshot();
@@ -213,6 +245,10 @@
 
   function drawRoads(snapshot) {
     const signal = snapshot.signal;
+    if (snapshot.config.mode === "highway") {
+      drawHighway(snapshot);
+      return;
+    }
     context.fillStyle = "#26323f";
     context.fillRect(0, layout.horizontalRoadY, logicalWidth, layout.roadWidth);
     context.fillRect(layout.verticalRoadX, 0, layout.roadWidth, logicalHeight);
@@ -247,6 +283,34 @@
       context.font = "700 15px system-ui";
       context.fillText("Incident", incidentX + 5, incidentY + incidentHeight * 0.68, incidentWidth - 10);
       context.restore();
+    }
+  }
+
+  function drawHighway(snapshot) {
+    const highway = layout.highway;
+    context.fillStyle = "#26323f";
+    context.fillRect(0, highway.roadY, logicalWidth, highway.roadHeight);
+    context.fillStyle = "#111827";
+    context.fillRect(0, highway.dividerY, logicalWidth, 4);
+    context.strokeStyle = "#f8d96a";
+    context.lineWidth = 3;
+    context.setLineDash([24, 24]);
+    context.beginPath();
+    context.moveTo(0, highway.dividerY);
+    context.lineTo(logicalWidth, highway.dividerY);
+    context.stroke();
+    context.setLineDash([]);
+    context.fillStyle = "#dbeafe";
+    context.font = "600 15px system-ui";
+    context.fillText("HIGHWAY", 24, highway.labelY);
+    context.fillText("Delayed braking experiment", 24, highway.footerY);
+    const [incidentX, incidentY, incidentWidth, incidentHeight] = highway.incident;
+    if (snapshot.config.incident) {
+      context.fillStyle = "#ef4444";
+      context.fillRect(incidentX, incidentY, incidentWidth, incidentHeight);
+      context.fillStyle = "#fee2e2";
+      context.font = "700 15px system-ui";
+      context.fillText("Incident", incidentX + 5, incidentY + incidentHeight * 0.68, incidentWidth - 10);
     }
   }
 
@@ -321,7 +385,10 @@
         queueByDirection[vehicle.direction] = (queueByDirection[vehicle.direction] || 0) + 1;
       }
     }
-    for (const [direction, rect] of Object.entries(layout.congestionOverlays)) {
+    const overlays = snapshot.config.mode === "highway"
+      ? layout.highway.congestionOverlays
+      : layout.congestionOverlays;
+    for (const [direction, rect] of Object.entries(overlays)) {
       const queue = queueByDirection[direction] || 0;
       if (queue > congestionOverlayThreshold) {
         context.fillStyle = queue > congestionHeavyThreshold ? "rgba(239, 68, 68, 0.34)" : "rgba(245, 158, 11, 0.28)";

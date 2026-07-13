@@ -34,7 +34,8 @@ body {
 }
 
 button,
-input {
+input,
+select {
   font: inherit;
 }
 
@@ -93,7 +94,8 @@ button {
 }
 
 button:focus-visible,
-input:focus-visible {
+input:focus-visible,
+select:focus-visible {
   outline: 2px solid #0f766e;
   outline-offset: 2px;
 }
@@ -179,6 +181,15 @@ label > span {
 
 input[type="range"] {
   accent-color: #0f766e;
+  width: 100%;
+}
+
+select {
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  color: #18212f;
+  padding: 8px 10px;
   width: 100%;
 }
 

@@ -21,6 +21,11 @@
     north: { axis: "y", start: 800, end: -80, fixed: 595, sign: -1, signal: "ns" }
   };
 
+  const HIGHWAY_ROUTES = {
+    east: { axis: "x", start: -80, end: 1200, fixed: 306, sign: 1, signal: null },
+    west: { axis: "x", start: 1200, end: -80, fixed: 390, sign: -1, signal: null }
+  };
+
   const STOP_LINES = {
     // Stop lines frame the central intersection drawn in app layout [492, 292, 138, 138].
     east: 492,
@@ -30,12 +35,15 @@
   };
 
   const DEFAULT_CONFIG = Object.freeze({
+    mode: "intersection",
     demand: 52,
     speedLimit: 50,
     signalCycle: 42,
     greenSplit: 52,
     incident: false,
-    busPriority: true
+    busPriority: true,
+    reactionTime: 1.2,
+    brakeBuildTime: 0.5
   });
   const PX_PER_METER = 18;
   const LANE_JITTER_PX = 12;
@@ -59,16 +67,18 @@
   const WAITING_SPEED_MPS = 1.3;
   const BUS_PRIORITY_EXTENSION_SECONDS = 7;
   const MIN_PHASE_HEADWAY_SECONDS = 6;
+  const HIGHWAY_DIRECTIONS = ["east", "west"];
 
   function clamp(value, min, max) {
     return Math.max(min, Math.min(max, value));
   }
 
   function createVehicle(id, direction, config, random) {
-    if (!ROUTES[direction]) {
+    const routeTable = config.mode === "highway" ? HIGHWAY_ROUTES : ROUTES;
+    if (!routeTable[direction]) {
       throw new Error(`Unknown direction: ${direction}`);
     }
-    const route = Object.assign({}, ROUTES[direction]);
+    const route = Object.assign({}, routeTable[direction]);
     const laneOffset = random() * LANE_JITTER_PX * 2 - LANE_JITTER_PX;
     const isBus = random() < BUS_SPAWN_PROBABILITY;
     const size = isBus ? 34 : 22;
@@ -87,7 +97,10 @@
       speed,
       currentSpeed: speed,
       length: size,
-      waiting: false
+      waiting: false,
+      brakeDelayRemaining: 0,
+      braking: false,
+      brakeTargetSpeed: speed
     };
     updateVehicleCoordinates(vehicle);
     return vehicle;
@@ -135,20 +148,40 @@
       this.config = Object.assign({}, DEFAULT_CONFIG, config || {});
       this.time = 0;
       this.nextId = 1;
+      this.resetVehicleState();
+      this.completedTrips = 0;
+    }
+
+    activeDirections() {
+      return this.config.mode === "highway" ? HIGHWAY_DIRECTIONS : DIRECTIONS;
+    }
+
+    computeSignal(prioritySignal) {
+      return this.config.mode === "highway"
+        ? { ew: "green", ns: "green" }
+        : signalState(this.time, this.config, prioritySignal);
+    }
+
+    resetVehicleState() {
       this.vehicles = [];
       // Stagger first spawns so all directions do not emit at t=0.
-      this.spawnTimers = Object.fromEntries(DIRECTIONS.map((direction, index) => [direction, index * 0.6]));
-      this.completedTrips = 0;
-      this.lastSignal = signalState(0, this.config, null);
+      this.spawnTimers = Object.fromEntries(
+        this.activeDirections().map((direction, index) => [direction, index * 0.6])
+      );
+      this.lastSignal = this.computeSignal(null);
     }
 
     setConfig(config) {
       const source = config || {};
+      const previousMode = this.config.mode;
       const validated = {};
-      for (const key of ["demand", "speedLimit", "signalCycle", "greenSplit", "incident", "busPriority"]) {
+      for (const key of ["mode", "demand", "speedLimit", "signalCycle", "greenSplit", "incident", "busPriority", "reactionTime", "brakeBuildTime"]) {
         if (Object.prototype.hasOwnProperty.call(source, key)) {
           validated[key] = source[key];
         }
+      }
+      if (validated.mode !== undefined) {
+        validated.mode = validated.mode === "highway" ? "highway" : "intersection";
       }
       if (validated.demand !== undefined) {
         validated.demand = clamp(validated.demand, 10, 95);
@@ -168,14 +201,23 @@
       if (validated.busPriority !== undefined) {
         validated.busPriority = Boolean(validated.busPriority);
       }
+      if (validated.reactionTime !== undefined) {
+        validated.reactionTime = clamp(validated.reactionTime, 0, 3);
+      }
+      if (validated.brakeBuildTime !== undefined) {
+        validated.brakeBuildTime = clamp(validated.brakeBuildTime, 0, 2);
+      }
       this.config = Object.assign({}, this.config, validated);
+      if (validated.mode !== undefined && validated.mode !== previousMode) {
+        this.resetVehicleState();
+      }
       for (const vehicle of this.vehicles) {
         vehicle.speed = (this.config.speedLimit / 3.6) * vehicle.speedRatio;
       }
     }
 
     refreshSignal(prioritySignal) {
-      this.lastSignal = signalState(this.time, this.config, prioritySignal);
+      this.lastSignal = this.computeSignal(prioritySignal);
       return this.lastSignal;
     }
 
@@ -196,7 +238,7 @@
     }
 
     getPrioritySignal() {
-      if (!this.config.busPriority) {
+      if (!this.config.busPriority || this.config.mode === "highway") {
         return null;
       }
       const priorityBus = this.findPriorityBus();
@@ -217,7 +259,7 @@
       const demandFactor = clamp(this.config.demand / 100, 0.05, 1);
       // Produces roughly 0.95-3.3 seconds between spawns per direction.
       const baseInterval = 3.4 - demandFactor * 2.45;
-      for (const direction of DIRECTIONS) {
+      for (const direction of this.activeDirections()) {
         this.spawnTimers[direction] -= dt;
         if (this.spawnTimers[direction] <= 0) {
           if (this.canSpawn(direction)) {
@@ -231,7 +273,7 @@
     }
 
     canSpawn(direction) {
-      const route = ROUTES[direction];
+      const route = (this.config.mode === "highway" ? HIGHWAY_ROUTES : ROUTES)[direction];
       return !this.vehicles.some((vehicle) => {
         if (vehicle.direction !== direction) return false;
         return Math.abs(vehicle.position - route.start) < MIN_SPAWN_GAP_PX;
@@ -239,12 +281,12 @@
     }
 
     moveVehicles(dt) {
-      const byDirection = new Map(DIRECTIONS.map((direction) => [direction, []]));
+      const byDirection = new Map(this.activeDirections().map((direction) => [direction, []]));
       for (const vehicle of this.vehicles) {
         byDirection.get(vehicle.direction).push(vehicle);
       }
 
-      for (const direction of DIRECTIONS) {
+      for (const direction of this.activeDirections()) {
         const routeVehicles = byDirection.get(direction).sort((a, b) => {
           return b.progress - a.progress;
         });
@@ -254,7 +296,10 @@
           const leader = index > 0 ? routeVehicles[index - 1] : null;
           const target = this.computeTargetSpeed(vehicle, leader);
           vehicle.waiting = target.waiting;
-          vehicle.currentSpeed += (target.speed - vehicle.currentSpeed) * clamp(dt * 3.8, 0, 1);
+          const effectiveTarget = this.config.mode === "highway"
+            ? this.applyBrakeDelay(vehicle, target.speed, dt)
+            : target.speed;
+          vehicle.currentSpeed += (effectiveTarget - vehicle.currentSpeed) * clamp(dt * 3.8, 0, 1);
           vehicle.position += vehicle.route.sign * vehicle.currentSpeed * PX_PER_METER * dt;
           vehicle.progress = Math.abs(vehicle.position - vehicle.route.start);
           updateVehicleCoordinates(vehicle);
@@ -262,20 +307,49 @@
       }
     }
 
+    applyBrakeDelay(vehicle, targetSpeed, dt) {
+      // Keep one braking episode active from reaction delay through deceleration.
+      const needsBraking = targetSpeed < vehicle.currentSpeed - 0.05;
+      if (needsBraking && !vehicle.braking) {
+        vehicle.braking = true;
+        vehicle.brakeDelayRemaining = this.config.reactionTime + this.config.brakeBuildTime;
+        vehicle.brakeTargetSpeed = targetSpeed;
+      }
+      if (!vehicle.braking) {
+        return targetSpeed;
+      }
+      if (needsBraking) {
+        vehicle.brakeTargetSpeed = Math.min(vehicle.brakeTargetSpeed, targetSpeed);
+        vehicle.brakeDelayRemaining = Math.max(0, vehicle.brakeDelayRemaining - dt);
+      } else {
+        vehicle.brakeTargetSpeed = Math.max(vehicle.brakeTargetSpeed, targetSpeed);
+        if (targetSpeed >= vehicle.speed - 0.05) {
+          vehicle.braking = false;
+          vehicle.brakeDelayRemaining = 0;
+        }
+      }
+      if (vehicle.braking && vehicle.brakeDelayRemaining > 0) {
+        return vehicle.currentSpeed;
+      }
+      return Math.min(targetSpeed, vehicle.brakeTargetSpeed);
+    }
+
     computeTargetSpeed(vehicle, leader) {
       let target = vehicle.speed;
       let waiting = false;
       const stopLine = STOP_LINES[vehicle.direction];
-      const distanceToStop = (stopLine - vehicle.position) * vehicle.route.sign;
-      const signal = this.lastSignal[vehicle.route.signal];
+      const distanceToStop = stopLine === undefined ? -1 : (stopLine - vehicle.position) * vehicle.route.sign;
+      const signal = vehicle.route.signal ? this.lastSignal[vehicle.route.signal] : "green";
 
-      if (
-        signal === "red" &&
-        distanceToStop > 0 &&
-        distanceToStop < RED_LIGHT_LOOKAHEAD_PX
-      ) {
-        target = Math.min(target, Math.max(0, (distanceToStop - RED_LIGHT_STOP_BUFFER_PX) / RED_LIGHT_BRAKE_GAIN));
-        waiting = waiting || target < WAITING_SPEED_MPS;
+      if (this.config.mode !== "highway") {
+        if (
+          signal === "red" &&
+          distanceToStop > 0 &&
+          distanceToStop < RED_LIGHT_LOOKAHEAD_PX
+        ) {
+          target = Math.min(target, Math.max(0, (distanceToStop - RED_LIGHT_STOP_BUFFER_PX) / RED_LIGHT_BRAKE_GAIN));
+          waiting = waiting || target < WAITING_SPEED_MPS;
+        }
       }
 
       // The incident marker is positioned in the eastbound lane only.
