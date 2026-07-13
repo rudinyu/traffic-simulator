@@ -1,6 +1,6 @@
 {
   "name": "traffic-simulator",
-  "version": "0.1.9",
+  "version": "0.1.10",
   "private": true,
   "description": "Interactive browser traffic simulation for road capacity, signal timing, incidents, and bus priority experiments.",
   "main": "src/simulation.js",

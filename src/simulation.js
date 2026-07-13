@@ -265,7 +265,7 @@
       if (this.config.mode === "intersection") {
         const opposingAxis = nextSignal.ew === "green" ? "ns" : "ew";
         const intersectionOccupied = this.vehicles.some((vehicle) => {
-          return vehicle.route.signal === opposingAxis && this.vehicleInIntersection(vehicle);
+          return !vehicle.crashed && vehicle.route.signal === opposingAxis && this.vehicleInIntersection(vehicle);
         });
         this.lastSignal = intersectionOccupied
           ? { ew: "red", ns: "red" }

@@ -72,6 +72,24 @@ runTest("signal holds all-red while the opposing approach is still in the inters
   assert.deepStrictEqual(sim.refreshSignal(null), { ew: "red", ns: "red" });
 });
 
+runTest("crashed vehicles do not permanently lock the signal cycle", () => {
+  const sim = new TrafficSimulation({
+    random: deterministicRandom(),
+    config: { signalCycle: 40, greenSplit: 50, busPriority: false }
+  });
+  sim.time = 25;
+  sim.vehicles = [{
+    direction: "east",
+    route: Object.assign({}, ROUTES.east),
+    x: 560,
+    y: 330,
+    crashed: true
+  }];
+  const signal = sim.refreshSignal(null);
+  assert.strictEqual(signal.ew, "red");
+  assert.strictEqual(signal.ns, "green");
+});
+
 runTest("step applies bus priority for an approaching bus", () => {
   const sim = new TrafficSimulation({
     random: deterministicRandom(),
