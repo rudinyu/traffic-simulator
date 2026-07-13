@@ -71,6 +71,7 @@
   const BUS_PRIORITY_EXTENSION_SECONDS = 7;
   const MIN_PHASE_HEADWAY_SECONDS = 6;
   const HIGHWAY_DIRECTIONS = ["east", "west"];
+  const LANE_CHANGE_RATE_PX_PER_SECOND = 90;
 
   function clamp(value, min, max) {
     return Math.max(min, Math.min(max, value));
@@ -96,6 +97,9 @@
       position: route.start,
       progress: 0,
       laneOffset,
+      baseLaneOffset: laneOffset,
+      lane: 0,
+      laneTargetOffset: laneOffset,
       speedRatio,
       speed,
       currentSpeed: speed,
@@ -290,13 +294,11 @@
       }
 
       for (const direction of this.activeDirections()) {
-        const routeVehicles = byDirection.get(direction).sort((a, b) => {
-          return b.progress - a.progress;
-        });
+        const routeVehicles = byDirection.get(direction).sort((a, b) => b.progress - a.progress);
 
         for (let index = 0; index < routeVehicles.length; index += 1) {
           const vehicle = routeVehicles[index];
-          const leader = index > 0 ? routeVehicles[index - 1] : null;
+          const leader = routeVehicles.slice(0, index).find((candidate) => candidate.lane === vehicle.lane) || null;
           const target = this.computeTargetSpeed(vehicle, leader);
           vehicle.waiting = target.waiting;
           const effectiveTarget = this.config.mode === "highway"
@@ -306,6 +308,11 @@
           const maxDelta = (speedDelta < 0 ? MAX_BRAKING_MPS2 : MAX_ACCELERATION_MPS2) * dt;
           vehicle.currentSpeed += clamp(speedDelta, -maxDelta, maxDelta);
           vehicle.currentSpeed = clamp(vehicle.currentSpeed, 0, vehicle.speed);
+          vehicle.laneOffset += clamp(
+            vehicle.laneTargetOffset - vehicle.laneOffset,
+            -LANE_CHANGE_RATE_PX_PER_SECOND * dt,
+            LANE_CHANGE_RATE_PX_PER_SECOND * dt
+          );
           vehicle.position += vehicle.route.sign * vehicle.currentSpeed * PX_PER_METER * dt;
           vehicle.progress = Math.abs(vehicle.position - vehicle.route.start);
           updateVehicleCoordinates(vehicle);
@@ -361,12 +368,23 @@
       // The incident marker is positioned in the eastbound lane only.
       if (this.config.incident && vehicle.direction === "east") {
         const distanceToIncident = INCIDENT_START_X - vehicle.position;
-        if (distanceToIncident > 0 && distanceToIncident < INCIDENT_LOOKAHEAD_PX) {
-          target = Math.min(target, Math.max(0, distanceToIncident / INCIDENT_BRAKE_GAIN));
-          waiting = waiting || target < WAITING_SPEED_MPS;
-        } else if (vehicle.position >= INCIDENT_START_X && vehicle.position <= INCIDENT_END_X + INCIDENT_CLEARANCE_PX) {
-          target = Math.min(target, vehicle.speed * INCIDENT_MAX_SPEED_RATIO);
-          waiting = waiting || target < WAITING_SPEED_MPS;
+        const incidentLookahead = Math.max(
+          INCIDENT_LOOKAHEAD_PX,
+          vehicle.currentSpeed * (this.config.mode === "highway"
+            ? this.config.reactionTime + this.config.brakeBuildTime
+            : 0) * PX_PER_METER +
+            (vehicle.currentSpeed * vehicle.currentSpeed / (2 * MAX_BRAKING_MPS2)) * PX_PER_METER
+        );
+        const canChangeLane = this.config.mode === "highway" && vehicle.lane === 0 && this.canChangeIncidentLane(vehicle);
+        if (this.config.mode === "highway" && vehicle.lane === 0 && distanceToIncident > 0 && distanceToIncident < incidentLookahead && canChangeLane) {
+          vehicle.lane = 1;
+          vehicle.laneTargetOffset = vehicle.baseLaneOffset + (vehicle.direction === "east" ? -40 : 40);
+        } else if (
+          distanceToIncident > 0 && distanceToIncident < incidentLookahead ||
+          vehicle.position >= INCIDENT_START_X && vehicle.position <= INCIDENT_END_X + INCIDENT_CLEARANCE_PX
+        ) {
+          target = 0;
+          waiting = true;
         }
       }
 
@@ -386,6 +404,14 @@
         speed: clamp(target, 0, vehicle.speed),
         waiting
       };
+    }
+
+    canChangeIncidentLane(vehicle) {
+      if (this.config.mode !== "highway") return false;
+      return !this.vehicles.some((other) => {
+        if (other === vehicle || other.direction !== vehicle.direction || other.lane !== 1) return false;
+        return Math.abs(other.position - vehicle.position) < 100;
+      });
     }
 
     removeCompleted() {

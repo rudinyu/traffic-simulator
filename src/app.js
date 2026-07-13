@@ -343,6 +343,8 @@
     context.lineWidth = 3;
     context.setLineDash([24, 24]);
     context.beginPath();
+    context.moveTo(0, 288);
+    context.lineTo(logicalWidth, 288);
     context.moveTo(0, highway.dividerY);
     context.lineTo(logicalWidth, highway.dividerY);
     context.stroke();

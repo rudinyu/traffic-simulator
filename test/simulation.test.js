@@ -437,6 +437,73 @@ runTest("incident does not slow non-eastbound vehicles", () => {
   assert.strictEqual(target.speed, vehicle.speed);
 });
 
+runTest("intersection incident makes eastbound vehicles brake before the blockage", () => {
+  const sim = new TrafficSimulation({
+    random: deterministicRandom(),
+    config: { incident: true, speedLimit: 50 }
+  });
+  const vehicle = {
+    direction: "east",
+    route: Object.assign({}, ROUTES.east),
+    position: 650,
+    speed: 14,
+    currentSpeed: 14,
+    length: 22,
+    lane: 0,
+    waiting: false
+  };
+  const result = sim.computeTargetSpeed(vehicle, null);
+  assert.strictEqual(result.speed, 0);
+  assert(result.waiting, "blocked vehicle should be marked waiting");
+});
+
+runTest("highway incident changes to an open adjacent lane", () => {
+  const sim = new TrafficSimulation({
+    random: deterministicRandom(),
+    config: { mode: "highway", incident: true, reactionTime: 1, brakeBuildTime: 0.5 }
+  });
+  const vehicle = {
+    direction: "east",
+    route: { axis: "x", sign: 1, signal: null },
+    position: 650,
+    speed: 14,
+    currentSpeed: 14,
+    length: 22,
+    lane: 0,
+    baseLaneOffset: 0,
+    laneTargetOffset: 0,
+    waiting: false
+  };
+  sim.vehicles = [vehicle];
+  const result = sim.computeTargetSpeed(vehicle, null);
+  assert.strictEqual(vehicle.lane, 1);
+  assert.strictEqual(result.speed, vehicle.speed);
+});
+
+runTest("highway incident makes vehicles brake when the adjacent lane is occupied", () => {
+  const sim = new TrafficSimulation({
+    random: deterministicRandom(),
+    config: { mode: "highway", incident: true }
+  });
+  const vehicle = {
+    direction: "east",
+    route: { axis: "x", sign: 1, signal: null },
+    position: 650,
+    speed: 14,
+    currentSpeed: 14,
+    length: 22,
+    lane: 0,
+    baseLaneOffset: 0,
+    laneTargetOffset: 0,
+    waiting: false
+  };
+  const adjacent = { direction: "east", lane: 1, position: 680 };
+  sim.vehicles = [vehicle, adjacent];
+  const result = sim.computeTargetSpeed(vehicle, null);
+  assert.strictEqual(result.speed, 0);
+  assert(result.waiting, "vehicle should queue when no adjacent lane is available");
+});
+
 if (failures.length > 0) {
   console.error(`${failures.length} test failure(s)`);
   process.exit(1);
