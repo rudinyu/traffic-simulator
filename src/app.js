@@ -5,7 +5,7 @@
     en: {
       title: "Traffic Simulation Console", subtitle: "Compare intersection flow with highway traffic and delayed braking effects.",
       language: "Language", pause: "Pause", resume: "Resume", reset: "Reset", metrics: "Live Metrics",
-      averageSpeed: "Average Speed", vehiclesInNetwork: "Vehicles in Network", queueLength: "Queue Length", completedTrips: "Completed Trips",
+      averageSpeed: "Average Speed", vehiclesInNetwork: "Vehicles in Network", queueLength: "Queue Length", brakingVehicles: "Braking Vehicles", completedTrips: "Completed Trips",
       scenarioControls: "Scenario Controls", roadwayMode: "Roadway Mode", intersection: "Intersection", highway: "Highway",
       trafficDemand: "Traffic Demand", speedLimit: "Speed Limit", signalCycle: "Signal Cycle", greenSplit: "Green Split",
       reactionTime: "Driver Reaction Time", brakeBuildTime: "Brake Build-up Time", incidentBottleneck: "Enable Incident Bottleneck", busPriority: "Bus Signal Priority",
@@ -18,7 +18,7 @@
     },
     "zh-TW": {
       title: "交通模擬控制台", subtitle: "比較路口車流、高速公路車流與煞車遞延效應。", language: "語言", pause: "暫停", resume: "繼續", reset: "重設", metrics: "即時指標",
-      averageSpeed: "平均速度", vehiclesInNetwork: "網路車輛數", queueLength: "排隊長度", completedTrips: "完成旅次", scenarioControls: "情境控制",
+      averageSpeed: "平均速度", vehiclesInNetwork: "網路車輛數", queueLength: "排隊長度", brakingVehicles: "煞車中車輛", completedTrips: "完成旅次", scenarioControls: "情境控制",
       roadwayMode: "道路模式", intersection: "路口", highway: "高速公路", trafficDemand: "交通需求", speedLimit: "速限", signalCycle: "號誌週期", greenSplit: "綠燈比例",
       reactionTime: "駕駛反應時間", brakeBuildTime: "煞車建立時間", incidentBottleneck: "啟用事故瓶頸", busPriority: "公車號誌優先", whatToWatch: "觀察重點",
       noteCongestion: "紅色路段代表壅塞，黃色路段代表速度較低。", noteIncident: "事故瓶頸會封閉一個車道並增加排隊。",
@@ -135,6 +135,7 @@
     avgSpeed: requireElement("avgSpeed"),
     vehicleCount: requireElement("vehicleCount"),
     queueLength: requireElement("queueLength"),
+    brakingVehicles: requireElement("brakingVehicles"),
     completedTrips: requireElement("completedTrips"),
     status: requireElement("trafficStatus")
   };
@@ -391,9 +392,9 @@
         throw new Error(`Unknown vehicle direction: ${vehicle.direction}`);
       }
       context.rotate(angle);
-      context.fillStyle = vehicle.isBus
-        ? (vehicle.waiting ? "#0369a1" : "#38bdf8")
-        : (vehicle.waiting ? "#f97316" : "#e5e7eb");
+      context.fillStyle = vehicle.braking
+        ? "#f97316"
+        : (vehicle.isBus ? (vehicle.waiting ? "#0369a1" : "#38bdf8") : (vehicle.waiting ? "#f97316" : "#e5e7eb"));
       context.strokeStyle = vehicle.isBus ? "#075985" : "#334155";
       context.lineWidth = 2;
       context.beginPath();
@@ -402,6 +403,11 @@
       context.stroke();
       context.fillStyle = "#111827";
       context.fillRect(vehicle.length / 2 - 7, -5, 4, 10);
+      if (vehicle.braking) {
+        context.fillStyle = "#ef4444";
+        context.fillRect(-vehicle.length / 2 + 3, -6, 4, 4);
+        context.fillRect(-vehicle.length / 2 + 3, 2, 4, 4);
+      }
       context.restore();
     }
   }
@@ -458,6 +464,7 @@
     metrics.avgSpeed.textContent = `${data.averageSpeedKmh} ${t("unitKmh")}`;
     metrics.vehicleCount.textContent = String(data.vehicleCount);
     metrics.queueLength.textContent = String(data.queueLength);
+    metrics.brakingVehicles.textContent = String(data.brakingVehicles);
     metrics.completedTrips.textContent = String(data.completedTrips);
     const now = performance.now();
     if (now - lastA11yUpdate > 1000) {

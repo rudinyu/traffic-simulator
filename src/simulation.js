@@ -64,6 +64,9 @@
   const FOLLOWING_GAP_PX = 54;
   const VEHICLE_BUFFER_PX = 16;
   const FOLLOWING_BRAKE_GAIN = 2.8;
+  const MAX_ACCELERATION_MPS2 = 2.2;
+  const MAX_BRAKING_MPS2 = 5.5;
+  const HIGHWAY_HEADWAY_FACTOR = 0.9;
   const WAITING_SPEED_MPS = 1.3;
   const BUS_PRIORITY_EXTENSION_SECONDS = 7;
   const MIN_PHASE_HEADWAY_SECONDS = 6;
@@ -299,7 +302,10 @@
           const effectiveTarget = this.config.mode === "highway"
             ? this.applyBrakeDelay(vehicle, target.speed, dt)
             : target.speed;
-          vehicle.currentSpeed += (effectiveTarget - vehicle.currentSpeed) * clamp(dt * 3.8, 0, 1);
+          const speedDelta = effectiveTarget - vehicle.currentSpeed;
+          const maxDelta = (speedDelta < 0 ? MAX_BRAKING_MPS2 : MAX_ACCELERATION_MPS2) * dt;
+          vehicle.currentSpeed += clamp(speedDelta, -maxDelta, maxDelta);
+          vehicle.currentSpeed = clamp(vehicle.currentSpeed, 0, vehicle.speed);
           vehicle.position += vehicle.route.sign * vehicle.currentSpeed * PX_PER_METER * dt;
           vehicle.progress = Math.abs(vehicle.position - vehicle.route.start);
           updateVehicleCoordinates(vehicle);
@@ -366,8 +372,12 @@
 
       if (leader) {
         const gap = (leader.position - vehicle.position) * vehicle.route.sign - (leader.length + vehicle.length) / 2;
-        if (gap < FOLLOWING_GAP_PX) {
-          target = Math.min(target, Math.max(0, (gap - VEHICLE_BUFFER_PX) / FOLLOWING_BRAKE_GAIN));
+        const desiredGap = this.config.mode === "highway"
+          ? FOLLOWING_GAP_PX + vehicle.currentSpeed * this.config.reactionTime * PX_PER_METER * HIGHWAY_HEADWAY_FACTOR
+          : FOLLOWING_GAP_PX;
+        if (gap < desiredGap) {
+          const gapError = desiredGap - gap;
+          target = Math.min(target, Math.max(0, vehicle.currentSpeed - gapError / FOLLOWING_BRAKE_GAIN));
           waiting = waiting || target < WAITING_SPEED_MPS;
         }
       }
@@ -396,6 +406,7 @@
         averageSpeedKmh: Math.round(avgMps * 3.6),
         vehicleCount,
         queueLength: this.vehicles.filter((vehicle) => vehicle.waiting).length,
+        brakingVehicles: this.vehicles.filter((vehicle) => vehicle.braking).length,
         completedTrips: this.completedTrips
       };
     }

@@ -313,12 +313,13 @@ runTest("getMetrics calculates average speed and queue length", () => {
   // Intentional minimal stubs: this isolates getMetrics from movement and spawn behavior.
   sim.vehicles = [
     { currentSpeed: 10, waiting: false },
-    { currentSpeed: 20, waiting: true }
+    { currentSpeed: 20, waiting: true, braking: true }
   ];
   const metrics = sim.getMetrics();
   // avg m/s = (10 + 20) / 2 = 15; km/h = 15 * 3.6 = 54.
   assert.strictEqual(metrics.averageSpeedKmh, 54);
   assert.strictEqual(metrics.queueLength, 1);
+  assert.strictEqual(metrics.brakingVehicles, 1);
 });
 
 runTest("getMetrics handles empty simulations", () => {
@@ -327,6 +328,7 @@ runTest("getMetrics handles empty simulations", () => {
   assert.strictEqual(metrics.averageSpeedKmh, 0);
   assert.strictEqual(metrics.vehicleCount, 0);
   assert.strictEqual(metrics.queueLength, 0);
+  assert.strictEqual(metrics.brakingVehicles, 0);
 });
 
 runTest("vehicle past stop line is not re-stopped by red light", () => {
