@@ -1,0 +1,19 @@
+{
+  "name": "traffic-simulator",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Interactive browser traffic simulation for road capacity, signal timing, incidents, and bus priority experiments.",
+  "main": "src/simulation.js",
+  "scripts": {
+    "test": "node test/simulation.test.js",
+    "build": "node scripts/build-check.js",
+    "check": "node --check src/app.js && node --check src/simulation.js && node --check scripts/build-check.js && node --check test/simulation.test.js"
+  },
+  "keywords": [
+    "traffic",
+    "simulation",
+    "transportation",
+    "canvas"
+  ],
+  "license": "MIT"
+}

@@ -1,0 +1,249 @@
+:root {
+  color-scheme: light;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background: #eef2f7;
+  color: #18212f;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+}
+
+.noscript {
+  background: #fee2e2;
+  color: #7f1d1d;
+  margin: 0;
+  padding: 12px 16px;
+}
+
+.sr-only {
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  padding: 0;
+  position: absolute;
+  width: 1px;
+  clip: rect(0, 0, 0, 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+button,
+input {
+  font: inherit;
+}
+
+.app-shell {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 340px;
+  min-height: 100vh;
+}
+
+.stage {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 18px;
+  padding: 24px;
+}
+
+.topbar {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+h1,
+h2,
+p {
+  margin: 0;
+}
+
+h1 {
+  font-size: 32px;
+  line-height: 1.1;
+}
+
+h2 {
+  font-size: 15px;
+  letter-spacing: 0;
+}
+
+.topbar p {
+  color: #5f6f83;
+  margin-top: 8px;
+}
+
+.run-controls {
+  display: flex;
+  gap: 10px;
+}
+
+button {
+  border: 0;
+  border-radius: 8px;
+  cursor: pointer;
+  min-width: 78px;
+  padding: 10px 14px;
+}
+
+button:focus-visible,
+input:focus-visible {
+  outline: 2px solid #0f766e;
+  outline-offset: 2px;
+}
+
+#toggleRun {
+  background: #0f766e;
+  color: white;
+}
+
+#resetRun {
+  background: #dbe4ee;
+  color: #1f2937;
+}
+
+.canvas-wrap {
+  aspect-ratio: 1120 / 720;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  min-height: 0;
+  overflow: hidden;
+  background: #dbeafe;
+}
+
+canvas {
+  display: block;
+  height: 100%;
+  width: 100%;
+}
+
+.panel {
+  background: #ffffff;
+  border-left: 1px solid #d5dde8;
+  display: flex;
+  flex-direction: column;
+  gap: 26px;
+  padding: 24px;
+}
+
+.metrics {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: 1fr 1fr;
+  margin-top: 14px;
+}
+
+.metrics div {
+  background: #f6f8fb;
+  border: 1px solid #dce4ee;
+  border-radius: 8px;
+  padding: 12px;
+}
+
+.metrics span {
+  color: #64748b;
+  display: block;
+  font-size: 12px;
+}
+
+.metrics strong {
+  display: block;
+  font-size: 22px;
+  margin-top: 4px;
+}
+
+.controls {
+  display: grid;
+  gap: 16px;
+}
+
+.controls h2 {
+  margin-bottom: 2px;
+}
+
+label {
+  display: grid;
+  gap: 7px;
+}
+
+label > span {
+  color: #334155;
+  font-size: 14px;
+}
+
+input[type="range"] {
+  accent-color: #0f766e;
+  width: 100%;
+}
+
+output {
+  color: #0f766e;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.toggle {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+}
+
+.toggle input {
+  accent-color: #0f766e;
+  height: 18px;
+  width: 18px;
+}
+
+.notes {
+  color: #506176;
+  line-height: 1.55;
+  margin: 14px 0 0;
+  padding-left: 18px;
+}
+
+.startup-error {
+  display: grid;
+  min-height: 100vh;
+  place-content: center;
+  padding: 24px;
+  text-align: center;
+}
+
+.startup-error p {
+  color: #64748b;
+  margin-top: 10px;
+}
+
+@media (max-width: 900px) {
+  .app-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .panel {
+    border-left: 0;
+    border-top: 1px solid #d5dde8;
+  }
+
+  .stage {
+    padding: 16px;
+  }
+
+  .topbar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  h1 {
+    font-size: 26px;
+  }
+
+  .canvas-wrap {
+    aspect-ratio: 14 / 9;
+  }
+}

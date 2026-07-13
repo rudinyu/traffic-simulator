@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>交通模擬控制台</title>
+    <link rel="stylesheet" href="src/styles.css">
+  </head>
+  <body>
+    <noscript>
+      <p class="noscript">此模擬器需要 JavaScript，請啟用後重新整理頁面。</p>
+    </noscript>
+    <main class="app-shell">
+      <section class="stage" aria-label="交通模擬畫布">
+        <header class="topbar">
+          <div>
+            <h1>交通模擬控制台</h1>
+            <p>調整車流、號誌與事故條件，觀察路口壅塞與通行效率。</p>
+          </div>
+          <div class="run-controls">
+            <button id="toggleRun" type="button">暫停</button>
+            <button id="resetRun" type="button">重設</button>
+          </div>
+        </header>
+
+        <div class="canvas-wrap">
+          <canvas id="trafficCanvas" width="1120" height="720">
+            <p>您的瀏覽器不支援 Canvas，請升級後再試。</p>
+          </canvas>
+        </div>
+      </section>
+
+      <aside class="panel" aria-label="模擬參數">
+        <section>
+          <h2>即時指標</h2>
+          <p id="trafficStatus" class="sr-only" aria-live="polite"></p>
+          <div class="metrics">
+            <div>
+              <span>平均速度</span>
+              <strong id="avgSpeed">0 km/h</strong>
+            </div>
+            <div>
+              <span>路網車輛</span>
+              <strong id="vehicleCount">0</strong>
+            </div>
+            <div>
+              <span>排隊長度</span>
+              <strong id="queueLength">0</strong>
+            </div>
+            <div>
+              <span>完成通過</span>
+              <strong id="completedTrips">0</strong>
+            </div>
+          </div>
+        </section>
+
+        <section class="controls">
+          <h2>情境控制</h2>
+          <label>
+            <span>車流量</span>
+            <input id="demand" type="range" min="10" max="95" value="52">
+            <output id="demandOut" for="demand">52%</output>
+          </label>
+          <label>
+            <span>速限</span>
+            <input id="speedLimit" type="range" min="25" max="80" value="50">
+            <output id="speedOut" for="speedLimit">50 km/h</output>
+          </label>
+          <label>
+            <span>號誌週期</span>
+            <input id="signalCycle" type="range" min="18" max="90" value="42">
+            <output id="cycleOut" for="signalCycle">42 秒</output>
+          </label>
+          <label>
+            <span>綠燈比例</span>
+            <input id="greenSplit" type="range" min="35" max="70" value="52">
+            <output id="greenOut" for="greenSplit">52%</output>
+          </label>
+          <label class="toggle">
+            <input id="incident" type="checkbox">
+            <span>啟用事故瓶頸</span>
+          </label>
+          <label class="toggle">
+            <input id="busPriority" type="checkbox" checked>
+            <span>公車優先號誌</span>
+          </label>
+        </section>
+
+        <section>
+          <h2>觀察重點</h2>
+          <ul class="notes">
+            <li>紅色路段代表壅塞，黃色代表車速下降。</li>
+            <li>事故瓶頸會關閉一條車道並增加排隊。</li>
+            <li>公車優先會在公車接近路口時延長綠燈。</li>
+          </ul>
+        </section>
+      </aside>
+    </main>
+
+    <script src="src/simulation.js" defer></script>
+    <script src="src/app.js" defer></script>
+  </body>
+</html>
