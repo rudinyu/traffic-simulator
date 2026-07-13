@@ -252,6 +252,7 @@ runTest("highway mode uses opposing east-west traffic without signals", () => {
   }
   assert(sim.vehicles.length > 0, "expected highway vehicles");
   assert(sim.vehicles.every((vehicle) => vehicle.direction === "east" || vehicle.direction === "west"));
+  assert(sim.vehicles.every((vehicle) => vehicle.lane === 0 || vehicle.lane === 1));
   assert.deepStrictEqual(sim.lastSignal, { ew: "green", ns: "green" });
 });
 
@@ -329,6 +330,37 @@ runTest("getMetrics handles empty simulations", () => {
   assert.strictEqual(metrics.vehicleCount, 0);
   assert.strictEqual(metrics.queueLength, 0);
   assert.strictEqual(metrics.brakingVehicles, 0);
+  assert.strictEqual(metrics.collisionVehicles, 0);
+});
+
+runTest("collided vehicles stop and remain in the network", () => {
+  const sim = new TrafficSimulation({ random: deterministicRandom() });
+  const first = {
+    direction: "east",
+    route: Object.assign({}, ROUTES.east),
+    x: 560,
+    y: 330,
+    currentSpeed: 10,
+    length: 22,
+    crashed: false,
+    waiting: false
+  };
+  const second = {
+    direction: "east",
+    route: Object.assign({}, ROUTES.east),
+    x: 565,
+    y: 330,
+    currentSpeed: 10,
+    length: 22,
+    crashed: false,
+    waiting: false
+  };
+  sim.vehicles = [first, second];
+  sim.detectCollisions();
+  assert(first.crashed && second.crashed, "overlapping vehicles must be marked crashed");
+  assert.strictEqual(first.currentSpeed, 0);
+  assert.strictEqual(second.currentSpeed, 0);
+  assert.strictEqual(sim.getMetrics().collisionVehicles, 2);
 });
 
 runTest("vehicle past stop line is not re-stopped by red light", () => {

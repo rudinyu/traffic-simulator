@@ -72,9 +72,19 @@
   const MIN_PHASE_HEADWAY_SECONDS = 6;
   const HIGHWAY_DIRECTIONS = ["east", "west"];
   const LANE_CHANGE_RATE_PX_PER_SECOND = 90;
+  const LANE_WIDTH_PX = 36;
+  const LANES_PER_DIRECTION = 2;
 
   function clamp(value, min, max) {
     return Math.max(min, Math.min(max, value));
+  }
+
+  function laneCenterOffset(mode, direction, lane) {
+    if (direction === "east") return lane === 0 ? 0 : -LANE_WIDTH_PX;
+    if (direction === "west") return lane === 0 ? 0 : LANE_WIDTH_PX;
+    if (mode !== "highway" && direction === "south") return lane === 0 ? 0 : LANE_WIDTH_PX;
+    if (mode !== "highway" && direction === "north") return lane === 0 ? 0 : -LANE_WIDTH_PX;
+    return 0;
   }
 
   function createVehicle(id, direction, config, random) {
@@ -83,7 +93,8 @@
       throw new Error(`Unknown direction: ${direction}`);
     }
     const route = Object.assign({}, routeTable[direction]);
-    const laneOffset = random() * LANE_JITTER_PX * 2 - LANE_JITTER_PX;
+    const lane = Math.floor(random() * LANES_PER_DIRECTION);
+    const laneOffset = laneCenterOffset(config.mode, direction, lane) + random() * LANE_JITTER_PX - LANE_JITTER_PX / 2;
     const isBus = random() < BUS_SPAWN_PROBABILITY;
     const size = isBus ? 34 : 22;
     // Cars vary from 82%-100% of the limit; buses run at a steadier 90%.
@@ -98,7 +109,7 @@
       progress: 0,
       laneOffset,
       baseLaneOffset: laneOffset,
-      lane: 0,
+      lane,
       laneTargetOffset: laneOffset,
       speedRatio,
       speed,
@@ -107,7 +118,8 @@
       waiting: false,
       brakeDelayRemaining: 0,
       braking: false,
-      brakeTargetSpeed: speed
+      brakeTargetSpeed: speed,
+      crashed: false
     };
     updateVehicleCoordinates(vehicle);
     return vehicle;
@@ -121,6 +133,17 @@
       vehicle.x = vehicle.route.fixed + vehicle.laneOffset;
       vehicle.y = vehicle.position;
     }
+  }
+
+  function vehiclesOverlap(first, second) {
+    const firstHorizontal = first.route.axis === "x";
+    const secondHorizontal = second.route.axis === "x";
+    const firstHalfWidth = firstHorizontal ? first.length / 2 : 10;
+    const firstHalfHeight = firstHorizontal ? 10 : first.length / 2;
+    const secondHalfWidth = secondHorizontal ? second.length / 2 : 10;
+    const secondHalfHeight = secondHorizontal ? 10 : second.length / 2;
+    return Math.abs(first.x - second.x) < firstHalfWidth + secondHalfWidth &&
+      Math.abs(first.y - second.y) < firstHalfHeight + secondHalfHeight;
   }
 
   /**
@@ -259,6 +282,7 @@
       this.refreshSignal(this.getPrioritySignal());
       this.moveVehicles(dt);
       this.removeCompleted();
+      this.detectCollisions();
       return this.getSnapshot();
     }
 
@@ -298,6 +322,7 @@
 
         for (let index = 0; index < routeVehicles.length; index += 1) {
           const vehicle = routeVehicles[index];
+          if (vehicle.crashed) continue;
           const leader = routeVehicles.slice(0, index).find((candidate) => candidate.lane === vehicle.lane) || null;
           const target = this.computeTargetSpeed(vehicle, leader);
           vehicle.waiting = target.waiting;
@@ -414,6 +439,23 @@
       });
     }
 
+    detectCollisions() {
+      for (let firstIndex = 0; firstIndex < this.vehicles.length; firstIndex += 1) {
+        const first = this.vehicles[firstIndex];
+        if (first.crashed) continue;
+        for (let secondIndex = firstIndex + 1; secondIndex < this.vehicles.length; secondIndex += 1) {
+          const second = this.vehicles[secondIndex];
+          if (second.crashed || !vehiclesOverlap(first, second)) continue;
+          first.crashed = true;
+          second.crashed = true;
+          first.currentSpeed = 0;
+          second.currentSpeed = 0;
+          first.waiting = true;
+          second.waiting = true;
+        }
+      }
+    }
+
     removeCompleted() {
       const before = this.vehicles.length;
       this.vehicles = this.vehicles.filter((vehicle) => {
@@ -433,6 +475,7 @@
         vehicleCount,
         queueLength: this.vehicles.filter((vehicle) => vehicle.waiting).length,
         brakingVehicles: this.vehicles.filter((vehicle) => vehicle.braking).length,
+        collisionVehicles: this.vehicles.filter((vehicle) => vehicle.crashed).length,
         completedTrips: this.completedTrips
       };
     }
