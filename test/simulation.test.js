@@ -55,6 +55,23 @@ runTest("disabled bus priority leaves base timing unchanged", () => {
   assert.strictEqual(signalState(16, config, "ns").ew, "green");
 });
 
+runTest("signal holds all-red while the opposing approach is still in the intersection", () => {
+  const sim = new TrafficSimulation({
+    random: deterministicRandom(),
+    config: { signalCycle: 40, greenSplit: 50, busPriority: false }
+  });
+  sim.time = 25;
+  sim.vehicles = [{
+    direction: "east",
+    route: Object.assign({}, ROUTES.east),
+    x: 560,
+    y: 330,
+    position: 560,
+    lane: 0
+  }];
+  assert.deepStrictEqual(sim.refreshSignal(null), { ew: "red", ns: "red" });
+});
+
 runTest("step applies bus priority for an approaching bus", () => {
   const sim = new TrafficSimulation({
     random: deterministicRandom(),
@@ -331,6 +348,7 @@ runTest("getMetrics handles empty simulations", () => {
   assert.strictEqual(metrics.queueLength, 0);
   assert.strictEqual(metrics.brakingVehicles, 0);
   assert.strictEqual(metrics.collisionVehicles, 0);
+  assert.strictEqual(metrics.collisionSeverityKmh, 0);
 });
 
 runTest("collided vehicles stop and remain in the network", () => {
@@ -346,10 +364,10 @@ runTest("collided vehicles stop and remain in the network", () => {
     waiting: false
   };
   const second = {
-    direction: "east",
-    route: Object.assign({}, ROUTES.east),
+    direction: "north",
+    route: Object.assign({}, ROUTES.north),
     x: 565,
-    y: 330,
+    y: 335,
     currentSpeed: 10,
     length: 22,
     crashed: false,
@@ -361,6 +379,34 @@ runTest("collided vehicles stop and remain in the network", () => {
   assert.strictEqual(first.currentSpeed, 0);
   assert.strictEqual(second.currentSpeed, 0);
   assert.strictEqual(sim.getMetrics().collisionVehicles, 2);
+  assert(sim.getMetrics().collisionSeverityKmh > 0, "collision should record relative impact speed");
+});
+
+runTest("following model brakes before a high closing-speed collision", () => {
+  const sim = new TrafficSimulation({
+    random: deterministicRandom(),
+    config: { mode: "highway", reactionTime: 1.2, brakeBuildTime: 0.5 }
+  });
+  const leader = {
+    direction: "east",
+    lane: 0,
+    route: { axis: "x", sign: 1, signal: null },
+    position: 500,
+    speed: 4,
+    currentSpeed: 4,
+    length: 22
+  };
+  const follower = {
+    direction: "east",
+    lane: 0,
+    route: { axis: "x", sign: 1, signal: null },
+    position: 390,
+    speed: 20,
+    currentSpeed: 20,
+    length: 22
+  };
+  const result = sim.computeTargetSpeed(follower, leader);
+  assert(result.speed < follower.currentSpeed, "closing vehicle must brake before contact");
 });
 
 runTest("vehicle past stop line is not re-stopped by red light", () => {
@@ -443,12 +489,12 @@ runTest("incident reduces throughput conditions under heavy demand", () => {
   const baseMetrics = base.getMetrics();
   const incidentMetrics = incident.getMetrics();
   assert(
-    incidentMetrics.averageSpeedKmh < baseMetrics.averageSpeedKmh,
-    "expected incident scenario to lower average speed"
+    incidentMetrics.completedTrips < baseMetrics.completedTrips,
+    "expected incident scenario to reduce throughput"
   );
   assert(
-    incidentMetrics.completedTrips <= baseMetrics.completedTrips,
-    "expected incident scenario to avoid increasing throughput"
+    incidentMetrics.collisionVehicles <= baseMetrics.collisionVehicles,
+    "expected incident scenario not to increase collisions"
   );
 });
 

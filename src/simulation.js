@@ -70,10 +70,12 @@
   const WAITING_SPEED_MPS = 1.3;
   const BUS_PRIORITY_EXTENSION_SECONDS = 7;
   const MIN_PHASE_HEADWAY_SECONDS = 6;
+  const SIGNAL_CLEARANCE_SECONDS = 2;
   const HIGHWAY_DIRECTIONS = ["east", "west"];
   const LANE_CHANGE_RATE_PX_PER_SECOND = 90;
   const LANE_WIDTH_PX = 36;
   const LANES_PER_DIRECTION = 2;
+  const INTERSECTION_BOUNDS = Object.freeze({ left: 492, right: 630, top: 292, bottom: 430 });
 
   function clamp(value, min, max) {
     return Math.max(min, Math.min(max, value));
@@ -119,7 +121,8 @@
       brakeDelayRemaining: 0,
       braking: false,
       brakeTargetSpeed: speed,
-      crashed: false
+      crashed: false,
+      collisionSpeedKmh: 0
     };
     updateVehicleCoordinates(vehicle);
     return vehicle;
@@ -161,9 +164,11 @@
       }
     }
     const phase = time % cycle;
+    const nsGreenStart = ewGreen + SIGNAL_CLEARANCE_SECONDS;
+    const nsGreenEnd = cycle - SIGNAL_CLEARANCE_SECONDS;
     return {
       ew: phase < ewGreen ? "green" : "red",
-      ns: phase < ewGreen ? "red" : "green"
+      ns: phase >= nsGreenStart && phase < nsGreenEnd ? "green" : "red"
     };
   }
 
@@ -247,8 +252,24 @@
     }
 
     refreshSignal(prioritySignal) {
-      this.lastSignal = this.computeSignal(prioritySignal);
+      const nextSignal = this.computeSignal(prioritySignal);
+      if (this.config.mode === "intersection") {
+        const opposingAxis = nextSignal.ew === "green" ? "ns" : "ew";
+        const intersectionOccupied = this.vehicles.some((vehicle) => {
+          return vehicle.route.signal === opposingAxis && this.vehicleInIntersection(vehicle);
+        });
+        this.lastSignal = intersectionOccupied
+          ? { ew: "red", ns: "red" }
+          : nextSignal;
+      } else {
+        this.lastSignal = nextSignal;
+      }
       return this.lastSignal;
+    }
+
+    vehicleInIntersection(vehicle) {
+      return vehicle.x >= INTERSECTION_BOUNDS.left && vehicle.x <= INTERSECTION_BOUNDS.right &&
+        vehicle.y >= INTERSECTION_BOUNDS.top && vehicle.y <= INTERSECTION_BOUNDS.bottom;
     }
 
     findPriorityBus() {
@@ -338,10 +359,29 @@
             -LANE_CHANGE_RATE_PX_PER_SECOND * dt,
             LANE_CHANGE_RATE_PX_PER_SECOND * dt
           );
+          const previousPosition = vehicle.position;
           vehicle.position += vehicle.route.sign * vehicle.currentSpeed * PX_PER_METER * dt;
+          this.enforceRedLightBoundary(vehicle, previousPosition);
           vehicle.progress = Math.abs(vehicle.position - vehicle.route.start);
           updateVehicleCoordinates(vehicle);
         }
+      }
+    }
+
+    enforceRedLightBoundary(vehicle, previousPosition) {
+      if (this.config.mode === "highway" || !vehicle.route.signal) return;
+      if (this.lastSignal[vehicle.route.signal] !== "red") return;
+      const stopLine = STOP_LINES[vehicle.direction];
+      const distanceBefore = (stopLine - previousPosition) * vehicle.route.sign;
+      const safeBoundary = stopLine - vehicle.route.sign * (RED_LIGHT_STOP_BUFFER_PX + vehicle.length / 2);
+      const crossedBoundary = vehicle.route.sign > 0
+        ? previousPosition < safeBoundary && vehicle.position >= safeBoundary
+        : previousPosition > safeBoundary && vehicle.position <= safeBoundary;
+      if (distanceBefore > 0 && crossedBoundary) {
+        vehicle.position = safeBoundary;
+        vehicle.currentSpeed = 0;
+        vehicle.waiting = true;
+        updateVehicleCoordinates(vehicle);
       }
     }
 
@@ -380,13 +420,18 @@
       const signal = vehicle.route.signal ? this.lastSignal[vehicle.route.signal] : "green";
 
       if (this.config.mode !== "highway") {
+        const signalLookahead = Math.max(
+          RED_LIGHT_LOOKAHEAD_PX,
+          (vehicle.currentSpeed * vehicle.currentSpeed / (2 * MAX_BRAKING_MPS2)) * PX_PER_METER +
+            vehicle.currentSpeed * 0.35 * PX_PER_METER
+        );
         if (
           signal === "red" &&
           distanceToStop > 0 &&
-          distanceToStop < RED_LIGHT_LOOKAHEAD_PX
+          distanceToStop < signalLookahead
         ) {
-          target = Math.min(target, Math.max(0, (distanceToStop - RED_LIGHT_STOP_BUFFER_PX) / RED_LIGHT_BRAKE_GAIN));
-          waiting = waiting || target < WAITING_SPEED_MPS;
+          target = 0;
+          waiting = true;
         }
       }
 
@@ -404,12 +449,14 @@
         if (this.config.mode === "highway" && vehicle.lane === 0 && distanceToIncident > 0 && distanceToIncident < incidentLookahead && canChangeLane) {
           vehicle.lane = 1;
           vehicle.laneTargetOffset = vehicle.baseLaneOffset + (vehicle.direction === "east" ? -40 : 40);
-        } else if (
-          distanceToIncident > 0 && distanceToIncident < incidentLookahead ||
-          vehicle.position >= INCIDENT_START_X && vehicle.position <= INCIDENT_END_X + INCIDENT_CLEARANCE_PX
-        ) {
-          target = 0;
-          waiting = true;
+        } else if (this.config.mode !== "highway" || vehicle.lane === 0) {
+          if (
+            distanceToIncident > 0 && distanceToIncident < incidentLookahead ||
+            vehicle.position >= INCIDENT_START_X && vehicle.position <= INCIDENT_END_X + INCIDENT_CLEARANCE_PX
+          ) {
+            target = 0;
+            waiting = true;
+          }
         }
       }
 
@@ -418,9 +465,17 @@
         const desiredGap = this.config.mode === "highway"
           ? FOLLOWING_GAP_PX + vehicle.currentSpeed * this.config.reactionTime * PX_PER_METER * HIGHWAY_HEADWAY_FACTOR
           : FOLLOWING_GAP_PX;
-        if (gap < desiredGap) {
-          const gapError = desiredGap - gap;
-          target = Math.min(target, Math.max(0, vehicle.currentSpeed - gapError / FOLLOWING_BRAKE_GAIN));
+        const closingSpeed = Math.max(0, vehicle.currentSpeed - leader.currentSpeed);
+        const responseTime = this.config.mode === "highway"
+          ? this.config.reactionTime + this.config.brakeBuildTime
+          : 0.35;
+        const reactionDistance = closingSpeed * responseTime * PX_PER_METER;
+        const brakingDistance = closingSpeed * closingSpeed / (2 * MAX_BRAKING_MPS2) * PX_PER_METER;
+        const safeGap = desiredGap + reactionDistance + brakingDistance;
+        if (gap < safeGap) {
+          const gapRatio = clamp((gap - VEHICLE_BUFFER_PX) / Math.max(1, safeGap), 0, 1);
+          const physicalTarget = leader.currentSpeed * gapRatio;
+          target = Math.min(target, Math.max(0, physicalTarget));
           waiting = waiting || target < WAITING_SPEED_MPS;
         }
       }
@@ -442,18 +497,46 @@
     detectCollisions() {
       for (let firstIndex = 0; firstIndex < this.vehicles.length; firstIndex += 1) {
         const first = this.vehicles[firstIndex];
-        if (first.crashed) continue;
         for (let secondIndex = firstIndex + 1; secondIndex < this.vehicles.length; secondIndex += 1) {
           const second = this.vehicles[secondIndex];
-          if (second.crashed || !vehiclesOverlap(first, second)) continue;
+          if (!vehiclesOverlap(first, second)) continue;
+          if (first.route.axis === second.route.axis && first.lane === second.lane && first.route.sign === second.route.sign) {
+            this.separateCollisionPair(first, second);
+            const leader = first.progress >= second.progress ? first : second;
+            const follower = leader === first ? second : first;
+            follower.currentSpeed = Math.min(follower.currentSpeed, leader.currentSpeed);
+            follower.waiting = true;
+            continue;
+          }
+          if (first.crashed && second.crashed) continue;
+          const firstVelocity = first.currentSpeed * (first.route.sign || 0);
+          const secondVelocity = second.currentSpeed * (second.route.sign || 0);
+          const impactSpeedKmh = Math.round(Math.abs(firstVelocity - secondVelocity) * 3.6);
           first.crashed = true;
           second.crashed = true;
           first.currentSpeed = 0;
           second.currentSpeed = 0;
+          first.collisionSpeedKmh = impactSpeedKmh;
+          second.collisionSpeedKmh = impactSpeedKmh;
           first.waiting = true;
           second.waiting = true;
+          this.separateCollisionPair(first, second);
         }
       }
+    }
+
+    separateCollisionPair(first, second) {
+      if (first.route.axis === second.route.axis && first.lane === second.lane) {
+        const leader = first.progress >= second.progress ? first : second;
+        const follower = leader === first ? second : first;
+        const separation = (leader.length + follower.length) / 2 + VEHICLE_BUFFER_PX;
+        follower.position = leader.position - leader.route.sign * separation;
+      } else {
+        first.position -= first.route.sign * VEHICLE_BUFFER_PX / 2;
+        second.position -= second.route.sign * VEHICLE_BUFFER_PX / 2;
+      }
+      updateVehicleCoordinates(first);
+      updateVehicleCoordinates(second);
     }
 
     removeCompleted() {
@@ -476,6 +559,7 @@
         queueLength: this.vehicles.filter((vehicle) => vehicle.waiting).length,
         brakingVehicles: this.vehicles.filter((vehicle) => vehicle.braking).length,
         collisionVehicles: this.vehicles.filter((vehicle) => vehicle.crashed).length,
+        collisionSeverityKmh: this.vehicles.reduce((max, vehicle) => Math.max(max, vehicle.collisionSpeedKmh || 0), 0),
         completedTrips: this.completedTrips
       };
     }
