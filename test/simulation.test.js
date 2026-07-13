@@ -110,6 +110,38 @@ runTest("findPriorityBus chooses the closest approaching bus", () => {
   assert.strictEqual(sim.findPriorityBus(), northBus);
 });
 
+runTest("getPrioritySignal returns null when no bus qualifies", () => {
+  const sim = new TrafficSimulation({
+    random: deterministicRandom(),
+    config: { busPriority: true }
+  });
+  assert.strictEqual(sim.getPrioritySignal(), null);
+});
+
+runTest("step ignores approaching buses when priority is disabled", () => {
+  const sim = new TrafficSimulation({
+    random: deterministicRandom(),
+    config: { signalCycle: 40, greenSplit: 50, busPriority: false }
+  });
+  sim.time = 23;
+  sim.vehicles = [{
+    id: 1,
+    direction: "east",
+    route: Object.assign({}, ROUTES.east),
+    isBus: true,
+    position: STOP_LINES.east - 20,
+    progress: 0,
+    laneOffset: 0,
+    speedRatio: 0.9,
+    speed: 12,
+    currentSpeed: 0,
+    length: 34,
+    waiting: false
+  }];
+  sim.step(0);
+  assert.strictEqual(sim.lastSignal.ew, "red");
+});
+
 runTest("setConfig preserves per-vehicle speed ratios", () => {
   const sim = new TrafficSimulation({
     random: deterministicRandom(),
@@ -145,6 +177,13 @@ runTest("setConfig clamps zero speed limit", () => {
   const sim = new TrafficSimulation({ random: deterministicRandom() });
   sim.setConfig({ speedLimit: 0 });
   assert.strictEqual(sim.config.speedLimit, 1);
+});
+
+runTest("setConfig coerces boolean controls", () => {
+  const sim = new TrafficSimulation({ random: deterministicRandom() });
+  sim.setConfig({ incident: 1, busPriority: 0 });
+  assert.strictEqual(sim.config.incident, true);
+  assert.strictEqual(sim.config.busPriority, false);
 });
 
 runTest("canSpawn blocks vehicles that are too close to the entry", () => {

@@ -17,6 +17,7 @@
   function startupErrorListener(event) {
     if (startupErrorHandled) return;
     const filename = event.filename || "";
+    // Resource load errors arrive via event.target; runtime errors identify the script in event.filename.
     // Catches network-level failures loading simulation.js; runtime failures are handled by the lib check below.
     const isScriptLoadError = event.target instanceof HTMLScriptElement &&
       event.target.src.includes("src/simulation.js");

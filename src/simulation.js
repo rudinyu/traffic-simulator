@@ -162,6 +162,12 @@
       if (validated.greenSplit !== undefined) {
         validated.greenSplit = clamp(validated.greenSplit, 35, 70);
       }
+      if (validated.incident !== undefined) {
+        validated.incident = Boolean(validated.incident);
+      }
+      if (validated.busPriority !== undefined) {
+        validated.busPriority = Boolean(validated.busPriority);
+      }
       this.config = Object.assign({}, this.config, validated);
       for (const vehicle of this.vehicles) {
         vehicle.speed = (this.config.speedLimit / 3.6) * vehicle.speedRatio;
@@ -190,6 +196,9 @@
     }
 
     getPrioritySignal() {
+      if (!this.config.busPriority) {
+        return null;
+      }
       const priorityBus = this.findPriorityBus();
       return priorityBus ? priorityBus.route.signal : null;
     }
