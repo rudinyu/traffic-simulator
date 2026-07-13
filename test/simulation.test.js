@@ -574,7 +574,8 @@ runTest("highway incident changes to an open adjacent lane", () => {
   sim.vehicles = [vehicle];
   const result = sim.computeTargetSpeed(vehicle, null);
   assert.strictEqual(vehicle.lane, 1);
-  assert.strictEqual(result.speed, vehicle.speed);
+  assert(result.speed < vehicle.speed, "vehicle should slow while changing away from the incident");
+  assert(result.waiting, "vehicle should remain cautious while the lane change is in progress");
 });
 
 runTest("highway incident makes vehicles brake when the adjacent lane is occupied", () => {
@@ -599,6 +600,41 @@ runTest("highway incident makes vehicles brake when the adjacent lane is occupie
   const result = sim.computeTargetSpeed(vehicle, null);
   assert.strictEqual(result.speed, 0);
   assert(result.waiting, "vehicle should queue when no adjacent lane is available");
+});
+
+runTest("highway incident prevents blocked vehicles from crossing the incident", () => {
+  const sim = new TrafficSimulation({
+    random: deterministicRandom(),
+    config: { mode: "highway", incident: true, reactionTime: 0, brakeBuildTime: 0 }
+  });
+  const vehicle = {
+    direction: "east",
+    route: { axis: "x", sign: 1, signal: null, start: -80, end: 1200 },
+    position: 710,
+    progress: 790,
+    speed: 14,
+    currentSpeed: 14,
+    length: 22,
+    lane: 0,
+    laneOffset: 0,
+    baseLaneOffset: 0,
+    laneTargetOffset: 0,
+    waiting: false,
+    crashed: false
+  };
+  const adjacent = {
+    direction: "east",
+    route: vehicle.route,
+    position: 710,
+    progress: 790,
+    lane: 1,
+    crashed: true
+  };
+  sim.vehicles = [vehicle, adjacent];
+  sim.moveVehicles(0.08);
+  assert(vehicle.position <= 715, "blocked vehicle must stop before the incident marker");
+  assert.strictEqual(vehicle.currentSpeed, 0);
+  assert(vehicle.waiting, "blocked vehicle should remain waiting");
 });
 
 if (failures.length > 0) {

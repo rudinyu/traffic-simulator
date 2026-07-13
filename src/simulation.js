@@ -55,6 +55,7 @@
   const INCIDENT_START_X = 742; // Matches the visual incident marker left edge in src/app.js.
   const INCIDENT_END_X = 800;
   const INCIDENT_CLEARANCE_PX = 25;
+  const INCIDENT_LANE_CLEARANCE_OFFSET_PX = 22;
   const INCIDENT_LOOKAHEAD_PX = 60;
   const INCIDENT_MAX_SPEED_RATIO = 0.28;
   const INCIDENT_BRAKE_GAIN = 3;
@@ -375,6 +376,7 @@
           const previousPosition = vehicle.position;
           vehicle.position += vehicle.route.sign * vehicle.currentSpeed * PX_PER_METER * dt;
           this.enforceRedLightBoundary(vehicle, previousPosition);
+          this.enforceIncidentBoundary(vehicle, previousPosition);
           vehicle.progress = Math.abs(vehicle.position - vehicle.route.start);
           updateVehicleCoordinates(vehicle);
         }
@@ -392,6 +394,26 @@
         : previousPosition > safeBoundary && vehicle.position <= safeBoundary;
       if (distanceBefore > 0 && crossedBoundary) {
         vehicle.position = safeBoundary;
+        vehicle.currentSpeed = 0;
+        vehicle.waiting = true;
+        updateVehicleCoordinates(vehicle);
+      }
+    }
+
+    enforceIncidentBoundary(vehicle, previousPosition) {
+      if (!this.config.incident || this.config.mode !== "highway" || vehicle.direction !== "east") return;
+      const laneOffset = vehicle.laneOffset ?? 0;
+      const laneBlocked = vehicle.lane === 0 ||
+        (vehicle.lane === 1 && Math.abs(laneOffset) < INCIDENT_LANE_CLEARANCE_OFFSET_PX);
+      if (!laneBlocked) return;
+
+      const stopPosition = INCIDENT_START_X - vehicle.length / 2 - VEHICLE_BUFFER_PX;
+      const crossedBoundary = previousPosition < stopPosition && vehicle.position >= stopPosition;
+      const insideIncident = vehicle.position >= INCIDENT_START_X && vehicle.position <= INCIDENT_END_X + INCIDENT_CLEARANCE_PX;
+      if (crossedBoundary) {
+        vehicle.position = stopPosition;
+      }
+      if (crossedBoundary || insideIncident) {
         vehicle.currentSpeed = 0;
         vehicle.waiting = true;
         updateVehicleCoordinates(vehicle);
@@ -461,7 +483,9 @@
         const canChangeLane = this.config.mode === "highway" && vehicle.lane === 0 && this.canChangeIncidentLane(vehicle);
         if (this.config.mode === "highway" && vehicle.lane === 0 && distanceToIncident > 0 && distanceToIncident < incidentLookahead && canChangeLane) {
           vehicle.lane = 1;
-          vehicle.laneTargetOffset = vehicle.baseLaneOffset + (vehicle.direction === "east" ? -40 : 40);
+          vehicle.laneTargetOffset = vehicle.baseLaneOffset - LANE_WIDTH_PX;
+          target = 0;
+          waiting = true;
         } else if (this.config.mode !== "highway" || vehicle.lane === 0) {
           if (
             distanceToIncident > 0 && distanceToIncident < incidentLookahead ||
@@ -470,6 +494,15 @@
             target = 0;
             waiting = true;
           }
+        }
+        if (
+          this.config.mode === "highway" &&
+          vehicle.lane === 1 &&
+          vehicle.laneOffset !== undefined &&
+          Math.abs(vehicle.laneOffset) < INCIDENT_LANE_CLEARANCE_OFFSET_PX
+        ) {
+          target = 0;
+          waiting = true;
         }
       }
 
