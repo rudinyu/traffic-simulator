@@ -6,7 +6,7 @@
       title: "Traffic Simulation Console", subtitle: "Compare intersection flow with highway traffic and delayed braking effects.",
       language: "Language", pause: "Pause", resume: "Resume", reset: "Reset", metrics: "Live Metrics",
       averageSpeed: "Average Speed", vehiclesInNetwork: "Vehicles in Network", queueLength: "Queue Length", brakingVehicles: "Braking Vehicles", collisionVehicles: "Collision Vehicles", collisionSeverity: "Impact Speed", completedTrips: "Completed Trips",
-      scenarioControls: "Scenario Controls", roadwayMode: "Roadway Mode", intersection: "Intersection", highway: "Highway",
+      scenarioControls: "Scenario Controls", roadwayMode: "Roadway Mode", intersection: "Intersection", highway: "Highway", signalStatus: "Signal status", ewGreen: "East-West GREEN", nsGreen: "North-South GREEN", allRed: "ALL RED",
       trafficDemand: "Traffic Demand", speedLimit: "Speed Limit", signalCycle: "Signal Cycle", greenSplit: "Green Split",
       reactionTime: "Driver Reaction Time", brakeBuildTime: "Brake Build-up Time", incidentBottleneck: "Enable Incident Bottleneck", busPriority: "Bus Signal Priority",
       whatToWatch: "What to Watch", noteCongestion: "Red road segments show congestion, while yellow segments show lower speeds.",
@@ -19,7 +19,7 @@
     "zh-TW": {
       title: "交通模擬控制台", subtitle: "比較路口車流、高速公路車流與煞車遞延效應。", language: "語言", pause: "暫停", resume: "繼續", reset: "重設", metrics: "即時指標",
       averageSpeed: "平均速度", vehiclesInNetwork: "網路車輛數", queueLength: "排隊長度", brakingVehicles: "煞車中車輛", collisionVehicles: "碰撞車輛", collisionSeverity: "碰撞衝擊速度", completedTrips: "完成旅次", scenarioControls: "情境控制",
-      roadwayMode: "道路模式", intersection: "路口", highway: "高速公路", trafficDemand: "交通需求", speedLimit: "速限", signalCycle: "號誌週期", greenSplit: "綠燈比例",
+      roadwayMode: "道路模式", intersection: "路口", highway: "高速公路", signalStatus: "號誌狀態", ewGreen: "東西向綠燈", nsGreen: "南北向綠燈", allRed: "全紅清空", trafficDemand: "交通需求", speedLimit: "速限", signalCycle: "號誌週期", greenSplit: "綠燈比例",
       reactionTime: "駕駛反應時間", brakeBuildTime: "煞車建立時間", incidentBottleneck: "啟用事故瓶頸", busPriority: "公車號誌優先", whatToWatch: "觀察重點",
       noteCongestion: "紅色路段代表壅塞，黃色路段代表速度較低。", noteIncident: "事故瓶頸會封閉一個車道並增加排隊。",
       noteBus: "公車接近路口時，公車優先會延長綠燈時間。", noteBraking: "高速公路煞車遞延由反應時間與煞車建立時間共同決定。",
@@ -323,6 +323,13 @@
 
     context.fillStyle = "#111827";
     context.fillRect(...layout.intersection);
+
+    const signalStatus = signal.ew === "green"
+      ? t("ewGreen")
+      : signal.ns === "green" ? t("nsGreen") : t("allRed");
+    context.fillStyle = "#18212f";
+    context.font = "700 15px system-ui";
+    context.fillText(`${t("signalStatus")}: ${signalStatus}`, 24, 34);
 
     for (const [x, y, axis] of layout.signals) {
       if (signal[axis] === undefined) {

@@ -270,6 +270,7 @@ runTest("highway mode uses opposing east-west traffic without signals", () => {
   assert(sim.vehicles.length > 0, "expected highway vehicles");
   assert(sim.vehicles.every((vehicle) => vehicle.direction === "east" || vehicle.direction === "west"));
   assert(sim.vehicles.every((vehicle) => vehicle.lane === 0 || vehicle.lane === 1));
+  assert.strictEqual(new Set(sim.vehicles.map((vehicle) => vehicle.lane)).size, 2, "expected both highway lanes to receive traffic");
   assert.deepStrictEqual(sim.lastSignal, { ew: "green", ns: "green" });
 });
 

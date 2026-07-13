@@ -89,13 +89,13 @@
     return 0;
   }
 
-  function createVehicle(id, direction, config, random) {
+  function createVehicle(id, direction, config, random, laneOverride) {
     const routeTable = config.mode === "highway" ? HIGHWAY_ROUTES : ROUTES;
     if (!routeTable[direction]) {
       throw new Error(`Unknown direction: ${direction}`);
     }
     const route = Object.assign({}, routeTable[direction]);
-    const lane = Math.floor(random() * LANES_PER_DIRECTION);
+    const lane = laneOverride === undefined ? Math.floor(random() * LANES_PER_DIRECTION) : laneOverride;
     const laneOffset = laneCenterOffset(config.mode, direction, lane) + random() * LANE_JITTER_PX - LANE_JITTER_PX / 2;
     const isBus = random() < BUS_SPAWN_PROBABILITY;
     const size = isBus ? 34 : 22;
@@ -168,7 +168,11 @@
     const nsGreenEnd = cycle - SIGNAL_CLEARANCE_SECONDS;
     return {
       ew: phase < ewGreen ? "green" : "red",
-      ns: phase >= nsGreenStart && phase < nsGreenEnd ? "green" : "red"
+      ns: phase >= nsGreenStart && phase < nsGreenEnd ? "green" : "red",
+      phase,
+      ewGreenEnd: ewGreen,
+      nsGreenStart,
+      nsGreenEnd
     };
   }
 
@@ -201,7 +205,12 @@
       this.vehicles = [];
       // Stagger first spawns so all directions do not emit at t=0.
       this.spawnTimers = Object.fromEntries(
-        this.activeDirections().map((direction, index) => [direction, index * 0.6])
+        this.activeDirections().flatMap((direction, directionIndex) => {
+          return Array.from({ length: LANES_PER_DIRECTION }, (_, lane) => [
+            `${direction}:${lane}`,
+            directionIndex * 0.6 + lane * 0.35
+          ]);
+        })
       );
       this.lastSignal = this.computeSignal(null);
     }
@@ -312,22 +321,26 @@
       // Produces roughly 0.95-3.3 seconds between spawns per direction.
       const baseInterval = 3.4 - demandFactor * 2.45;
       for (const direction of this.activeDirections()) {
-        this.spawnTimers[direction] -= dt;
-        if (this.spawnTimers[direction] <= 0) {
-          if (this.canSpawn(direction)) {
-            this.vehicles.push(createVehicle(this.nextId++, direction, this.config, this.random));
-            this.spawnTimers[direction] = baseInterval * (0.75 + this.random() * 0.5);
-          } else {
-            this.spawnTimers[direction] = SPAWN_RETRY_SECONDS;
+        for (let lane = 0; lane < LANES_PER_DIRECTION; lane += 1) {
+          const timerKey = `${direction}:${lane}`;
+          this.spawnTimers[timerKey] -= dt;
+          if (this.spawnTimers[timerKey] <= 0) {
+            if (this.canSpawn(direction, lane)) {
+              this.vehicles.push(createVehicle(this.nextId++, direction, this.config, this.random, lane));
+              this.spawnTimers[timerKey] = baseInterval * (0.75 + this.random() * 0.5);
+            } else {
+              this.spawnTimers[timerKey] = SPAWN_RETRY_SECONDS;
+            }
           }
         }
       }
     }
 
-    canSpawn(direction) {
+    canSpawn(direction, lane) {
       const route = (this.config.mode === "highway" ? HIGHWAY_ROUTES : ROUTES)[direction];
       return !this.vehicles.some((vehicle) => {
         if (vehicle.direction !== direction) return false;
+        if (lane !== undefined && vehicle.lane !== undefined && vehicle.lane !== lane) return false;
         return Math.abs(vehicle.position - route.start) < MIN_SPAWN_GAP_PX;
       });
     }
