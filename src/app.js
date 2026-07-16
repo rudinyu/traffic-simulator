@@ -4,30 +4,31 @@
   const translations = {
     en: {
       title: "Traffic Simulation Console", subtitle: "Compare intersection flow with highway traffic and delayed braking effects.",
-      language: "Language", pause: "Pause", resume: "Resume", reset: "Reset", metrics: "Live Metrics",
+      language: "Language", simulationSpeed: "Simulation Speed", pause: "Pause", resume: "Resume", reset: "Reset", metrics: "Live Metrics",
       averageSpeed: "Average Speed", vehiclesInNetwork: "Vehicles in Network", queueLength: "Queue Length", brakingVehicles: "Braking Vehicles", collisionVehicles: "Collision Vehicles", collisionSeverity: "Impact Speed", completedTrips: "Completed Trips",
       scenarioControls: "Scenario Controls", roadwayMode: "Roadway Mode", intersection: "Intersection", highway: "Highway", signalStatus: "Signal status", ewGreen: "East-West GREEN", nsGreen: "North-South GREEN", allRed: "ALL RED",
       trafficDemand: "Traffic Demand", speedLimit: "Speed Limit", roadCondition: "Road Condition", dryRoad: "Dry", wetRoad: "Wet", icyRoad: "Icy", signalCycle: "Signal Cycle", greenSplit: "Green Split",
-      reactionTime: "Driver Reaction Time", brakeBuildTime: "Brake Build-up Time", incidentBottleneck: "Enable Incident Bottleneck", busPriority: "Bus Signal Priority",
+      reactionTime: "Driver Reaction Time", brakeBuildTime: "Brake Build-up Time", incidentBottleneck: "Enable Random Incidents", busPriority: "Bus Signal Priority",
       scenarioSeed: "Scenario Seed", seedRestartHint: "Changing the seed restarts the scenario.", exportScenario: "Export JSON", scenarioJson: "Scenario JSON Snapshot", scenarioPlaceholder: "Export JSON to capture the current scenario.",
       whatToWatch: "What to Watch", noteCongestion: "Red road segments show congestion, while yellow segments show lower speeds.",
-      noteIncident: "The incident bottleneck closes one lane and increases queues.", noteBus: "Bus priority extends the green phase when a bus approaches the intersection.",
+      noteIncident: "Seeded incidents appear at random times and clear automatically after 30–120 simulated minutes.", noteBus: "Bus priority extends the green phase when a bus approaches the intersection.",
       noteBraking: "Highway braking delay combines reaction time with brake build-up time before deceleration begins.", notePhysics: "Wet and icy roads reduce friction, lengthen stopping distance, and increase following gaps.", highwayLabel: "HIGHWAY",
       brakingExperiment: "Delayed braking experiment", incident: "Incident", startupTitle: "Traffic simulation failed to start",
       startupDetail: "Make sure the required files loaded, then refresh the page.", loopError: "The simulation hit an error. Press Reset or refresh the page.",
+      incidentStatus: "Incident Status", incidentOff: "Off", incidentScheduled: "Starts in {minutes} min", incidentClearing: "Clears in {minutes} min",
       status: "Average speed {speed} km/h, vehicles in network {vehicles}, queue length {queue}, completed trips {trips}", unitKmh: "km/h", unitSec: "sec"
     },
     "zh-TW": {
-      title: "交通模擬控制台", subtitle: "比較路口車流、高速公路車流與煞車遞延效應。", language: "語言", pause: "暫停", resume: "繼續", reset: "重設", metrics: "即時指標",
+      title: "交通模擬控制台", subtitle: "比較路口車流、高速公路車流與煞車遞延效應。", language: "語言", simulationSpeed: "模擬速度", pause: "暫停", resume: "繼續", reset: "重設", metrics: "即時指標",
       averageSpeed: "平均速度", vehiclesInNetwork: "網路車輛數", queueLength: "排隊長度", brakingVehicles: "煞車中車輛", collisionVehicles: "碰撞車輛", collisionSeverity: "碰撞衝擊速度", completedTrips: "完成旅次", scenarioControls: "情境控制",
       roadwayMode: "道路模式", intersection: "路口", highway: "高速公路", signalStatus: "號誌狀態", ewGreen: "東西向綠燈", nsGreen: "南北向綠燈", allRed: "全紅清空", trafficDemand: "交通需求", speedLimit: "速限", roadCondition: "路面狀態", dryRoad: "乾燥", wetRoad: "濕滑", icyRoad: "結冰", signalCycle: "號誌週期", greenSplit: "綠燈比例",
-      reactionTime: "駕駛反應時間", brakeBuildTime: "煞車建立時間", incidentBottleneck: "啟用事故瓶頸", busPriority: "公車號誌優先",
+      reactionTime: "駕駛反應時間", brakeBuildTime: "煞車建立時間", incidentBottleneck: "啟用隨機事故", busPriority: "公車號誌優先",
       scenarioSeed: "情境 Seed", seedRestartHint: "變更 seed 會重新開始情境。", exportScenario: "匯出 JSON", scenarioJson: "情境 JSON 快照", scenarioPlaceholder: "匯出 JSON 以擷取目前情境。", whatToWatch: "觀察重點",
-      noteCongestion: "紅色路段代表壅塞，黃色路段代表速度較低。", noteIncident: "事故瓶頸會封閉一個車道並增加排隊。",
+      noteCongestion: "紅色路段代表壅塞，黃色路段代表速度較低。", noteIncident: "事故依 Seed 隨機出現，並在模擬時間 30–120 分鐘後自動解除。",
       noteBus: "公車接近路口時，公車優先會延長綠燈時間。", noteBraking: "高速公路煞車遞延由反應時間與煞車建立時間共同決定。",
       notePhysics: "濕滑與結冰路面會降低摩擦、拉長煞停距離並增加跟車距離。",
       highwayLabel: "高速公路", brakingExperiment: "煞車遞延實驗", incident: "事故", startupTitle: "交通模擬啟動失敗",
-      startupDetail: "請確認必要檔案已載入，然後重新整理頁面。", loopError: "模擬發生錯誤，請按重設或重新整理頁面。",
+      startupDetail: "請確認必要檔案已載入，然後重新整理頁面。", loopError: "模擬發生錯誤，請按重設或重新整理頁面。", incidentStatus: "事故狀態", incidentOff: "關閉", incidentScheduled: "{minutes} 分鐘後發生", incidentClearing: "{minutes} 分鐘後解除",
       status: "平均速度 {speed} 公里/小時，網路車輛 {vehicles}，排隊長度 {queue}，完成旅次 {trips}", unitKmh: "公里/小時", unitSec: "秒"
     }
   };
@@ -127,6 +128,7 @@
     brakeBuildTime: requireElement("brakeBuildTime")
   };
   const languageControl = requireElement("language");
+  const simulationSpeedControl = requireElement("simulationSpeed");
   const outputs = {
     demand: requireElement("demandOut"),
     speedLimit: requireElement("speedOut"),
@@ -143,6 +145,7 @@
     collisionVehicles: requireElement("collisionVehicles"),
     collisionSeverity: requireElement("collisionSeverity"),
     completedTrips: requireElement("completedTrips"),
+    incidentStatus: requireElement("incidentStatus"),
     status: requireElement("trafficStatus")
   };
   const toggleRun = requireElement("toggleRun");
@@ -174,7 +177,7 @@
   const normalizeSeed = window.TrafficSimulatorLib.normalizeSeed;
   let committedSeed;
   commitSeedFromControl();
-  const simulation = new window.TrafficSimulatorLib.TrafficSimulation({ config: { seed: committedSeed } });
+  const simulation = new window.TrafficSimulatorLib.TrafficSimulation({ config: readConfig() });
   let running = true;
   let lastFrame = performance.now();
   let lastA11yUpdate = 0;
@@ -275,6 +278,9 @@
 
   function bindControls() {
     languageControl.addEventListener("change", () => applyLanguage(languageControl.value));
+    simulationSpeedControl.addEventListener("change", () => {
+      lastFrame = performance.now();
+    });
     for (const input of Object.values(controls)) {
       input.addEventListener("input", () => {
         updateOutputs();
@@ -373,7 +379,7 @@
       drawSignal(x, y, signal[axis] === "green");
     }
 
-    if (snapshot.config.incident) {
+    if (snapshot.incident.active) {
       const [incidentX, incidentY, incidentWidth, incidentHeight] = layout.incident;
       context.save();
       context.fillStyle = "#ef4444";
@@ -408,7 +414,7 @@
     context.fillText(t("highwayLabel"), 24, highway.labelY);
     context.fillText(t("brakingExperiment"), 24, highway.footerY);
     const [incidentX, incidentY, incidentWidth, incidentHeight] = highway.incident;
-    if (snapshot.config.incident) {
+    if (snapshot.incident.active) {
       context.fillStyle = "#ef4444";
       context.fillRect(incidentX, incidentY, incidentWidth, incidentHeight);
       context.fillStyle = "#fee2e2";
@@ -476,6 +482,14 @@
         context.lineTo(vehicle.length / 2 - 4, -6);
         context.stroke();
       }
+      const lanePlan = vehicle.laneChange || vehicle.laneChangeIntent;
+      const signaling = lanePlan && Math.floor(snapshot.time * 2) % 2 === 0;
+      if (signaling) {
+        const side = lanePlan.targetLane > vehicle.lane ? -1 : 1;
+        context.fillStyle = "#facc15";
+        context.fillRect(vehicle.length / 2 - 6, side > 0 ? 6 : -9, 4, 3);
+        context.fillRect(-vehicle.length / 2 + 2, side > 0 ? 6 : -9, 4, 3);
+      }
       context.restore();
     }
   }
@@ -536,6 +550,19 @@
     metrics.collisionVehicles.textContent = String(data.collisionVehicles);
     metrics.collisionSeverity.textContent = `${data.collisionSeverityKmh} ${t("unitKmh")}`;
     metrics.completedTrips.textContent = String(data.completedTrips);
+    if (data.incidentActive) {
+      metrics.incidentStatus.textContent = t("incidentClearing").replace(
+        "{minutes}",
+        Math.max(1, Math.ceil(data.incidentRemainingSeconds / 60))
+      );
+    } else if (data.nextIncidentSeconds !== null) {
+      metrics.incidentStatus.textContent = t("incidentScheduled").replace(
+        "{minutes}",
+        Math.max(1, Math.ceil(data.nextIncidentSeconds / 60))
+      );
+    } else {
+      metrics.incidentStatus.textContent = t("incidentOff");
+    }
     const now = performance.now();
     if (now - lastA11yUpdate > 1000) {
       metrics.status.textContent = t("status")
@@ -553,9 +580,17 @@
     }
 
     try {
-      const dt = (now - lastFrame) / 1000;
+      const dt = Math.min((now - lastFrame) / 1000, 0.25);
       lastFrame = now;
-      const snapshot = running ? simulation.step(dt) : pausedSnapshot || simulation.getSnapshot();
+      let snapshot = pausedSnapshot || simulation.getSnapshot();
+      if (running) {
+        let remainingSimulationTime = dt * Number(simulationSpeedControl.value);
+        while (remainingSimulationTime > 0) {
+          const stepSeconds = Math.min(window.TrafficSimulatorLib.MAX_STEP_SECONDS, remainingSimulationTime);
+          snapshot = simulation.step(stepSeconds);
+          remainingSimulationTime -= stepSeconds;
+        }
+      }
       draw(snapshot);
     } catch (error) {
       loopError = true;

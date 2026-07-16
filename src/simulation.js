@@ -34,12 +34,26 @@
   const INCIDENT_CLEARANCE_PX = 25;
   const INCIDENT_LANE_CLEARANCE_OFFSET_PX = 22;
   const INCIDENT_LOOKAHEAD_PX = 60;
-  const INCIDENT_MAX_SPEED_RATIO = 0.28;
+  const INCIDENT_APPROACH_SPEED_RATIO = 0.58;
   const INCIDENT_BRAKE_GAIN = 3;
-  const LANE_CHANGE_BACK_CLEARANCE_PX = 70;
-  const LANE_CHANGE_FRONT_CLEARANCE_PX = 135;
-  const LANE_CHANGE_SPEED_RATIO = 0.45;
+  const INCIDENT_MIN_DURATION_SECONDS = 30 * 60;
+  const INCIDENT_MAX_DURATION_SECONDS = 2 * 60 * 60;
+  const INCIDENT_FIRST_DELAY_MIN_SECONDS = 5 * 60;
+  const INCIDENT_FIRST_DELAY_MAX_SECONDS = 15 * 60;
+  const INCIDENT_REPEAT_DELAY_MIN_SECONDS = 15 * 60;
+  const INCIDENT_REPEAT_DELAY_MAX_SECONDS = 45 * 60;
+  const LANE_CHANGE_BACK_CLEARANCE_PX = 58;
+  const LANE_CHANGE_FRONT_CLEARANCE_PX = 82;
+  const LANE_CHANGE_SPEED_RATIO = 0.72;
   const LANE_CHANGE_SNAP_TOLERANCE_PX = 0.75;
+  const LANE_CHANGE_MIN_DURATION_SECONDS = 2.2;
+  const LANE_CHANGE_MAX_DURATION_SECONDS = 4.2;
+  const LANE_CHANGE_MIN_DECISION_SECONDS = 0.7;
+  const LANE_CHANGE_MAX_DECISION_SECONDS = 2.1;
+  const LANE_CHANGE_MIN_COOLDOWN_SECONDS = 4;
+  const LANE_CHANGE_MAX_COOLDOWN_SECONDS = 9;
+  const OVERTAKE_LOOKAHEAD_PX = 230;
+  const OVERTAKE_SPEED_ADVANTAGE_MPS = 1.5;
   const RED_LIGHT_LOOKAHEAD_PX = 95;
   const RED_LIGHT_STOP_BUFFER_PX = 12;
   const RED_LIGHT_BRAKE_GAIN = 3;
@@ -54,7 +68,6 @@
   const MIN_PHASE_HEADWAY_SECONDS = 6;
   const SIGNAL_CLEARANCE_SECONDS = 2;
   const HIGHWAY_DIRECTIONS = ["east", "west"];
-  const LANE_CHANGE_RATE_PX_PER_SECOND = 90;
   const LANE_WIDTH_PX = 36;
   const LANES_PER_DIRECTION = 2;
   // Below this closing speed, same-lane contact is treated as queue compression instead of a crash.
@@ -208,23 +221,27 @@
     return Object.assign({}, base);
   }
 
+  function randomBetween(random, min, max) {
+    return min + random() * (max - min);
+  }
+
   function driverReactionTimeSeconds(vehicle, config) {
-    const reactionScale = vehicle.driver ? vehicle.driver.reactionScale : 1;
+    const reactionScale = vehicle.driver ? vehicle.driver.reactionScale ?? 1 : 1;
     return config.reactionTime * reactionScale;
   }
 
   function driverHeadwayScale(vehicle, config) {
-    const driverScale = vehicle.driver ? vehicle.driver.headwayScale : 1;
+    const driverScale = vehicle.driver ? vehicle.driver.headwayScale ?? 1 : 1;
     return driverScale * roadConditionForConfig(config).headwayScale;
   }
 
   function effectiveMaxAccelerationMps2(vehicle, config) {
-    const driverScale = vehicle.driver ? vehicle.driver.accelerationScale : 1;
+    const driverScale = vehicle.driver ? vehicle.driver.accelerationScale ?? 1 : 1;
     return MAX_ACCELERATION_MPS2 * driverScale * roadConditionForConfig(config).accelerationScale;
   }
 
   function effectiveMaxBrakingMps2(vehicle, config) {
-    const driverScale = vehicle.driver ? vehicle.driver.brakingScale : 1;
+    const driverScale = vehicle.driver ? vehicle.driver.brakingScale ?? 1 : 1;
     return MAX_BRAKING_MPS2 * driverScale * roadConditionForConfig(config).brakingScale;
   }
 
@@ -274,6 +291,8 @@
       laneTargetOffset: laneOffset,
       laneChanging: false,
       laneChange: null,
+      laneChangeIntent: null,
+      laneChangeCooldown: randomBetween(random, 0, LANE_CHANGE_MIN_COOLDOWN_SECONDS),
       speedRatio,
       speed,
       currentSpeed: speed,
@@ -285,6 +304,7 @@
       brakeTargetSpeed: speed,
       crashed: false,
       collisionSpeedKmh: 0,
+      crashClearAt: null,
       previousPosition: route.start,
       previousX: undefined,
       previousY: undefined
@@ -434,6 +454,7 @@
       const opts = options || {};
       this.externalRandom = typeof opts.random === "function" ? opts.random : null;
       this.random = this.externalRandom || Math.random;
+      this.incidentRandom = this.random;
       this.reset(opts.config);
     }
 
@@ -442,11 +463,75 @@
       this.config.seed = normalizeSeed(this.config.seed);
       if (!this.externalRandom) {
         this.random = createSeededRandom(this.config.seed);
+        this.incidentRandom = createSeededRandom(`${this.config.seed}:incidents`);
+      } else {
+        this.incidentRandom = this.externalRandom;
       }
       this.time = 0;
       this.nextId = 1;
+      this.incidentCount = 0;
+      this.resolvedCrashCount = 0;
+      this.resetIncidentState();
       this.resetVehicleState();
       this.completedTrips = 0;
+    }
+
+    incidentDurationSeconds() {
+      return randomBetween(this.incidentRandom, INCIDENT_MIN_DURATION_SECONDS, INCIDENT_MAX_DURATION_SECONDS);
+    }
+
+    scheduleNextIncident(firstIncident) {
+      if (!this.config.incident) {
+        this.nextIncidentAt = null;
+        return;
+      }
+      const minDelay = firstIncident ? INCIDENT_FIRST_DELAY_MIN_SECONDS : INCIDENT_REPEAT_DELAY_MIN_SECONDS;
+      const maxDelay = firstIncident ? INCIDENT_FIRST_DELAY_MAX_SECONDS : INCIDENT_REPEAT_DELAY_MAX_SECONDS;
+      this.nextIncidentAt = this.time + randomBetween(this.incidentRandom, minDelay, maxDelay);
+    }
+
+    resetIncidentState() {
+      this.activeIncident = null;
+      this.scheduleNextIncident(true);
+    }
+
+    activateIncident(durationSeconds) {
+      const requestedDuration = Number(durationSeconds);
+      const duration = durationSeconds === undefined || !Number.isFinite(requestedDuration)
+        ? this.incidentDurationSeconds()
+        : clamp(requestedDuration, INCIDENT_MIN_DURATION_SECONDS, INCIDENT_MAX_DURATION_SECONDS);
+      this.activeIncident = {
+        startedAt: this.time,
+        clearsAt: this.time + duration,
+        durationSeconds: duration,
+        direction: "east",
+        lane: 0
+      };
+      this.nextIncidentAt = null;
+      this.incidentCount += 1;
+      return this.activeIncident;
+    }
+
+    clearIncident() {
+      this.activeIncident = null;
+      this.scheduleNextIncident(false);
+    }
+
+    updateIncidentState() {
+      if (!this.config.incident) {
+        this.activeIncident = null;
+        this.nextIncidentAt = null;
+        return;
+      }
+      if (this.activeIncident && this.time >= this.activeIncident.clearsAt) {
+        this.clearIncident();
+      } else if (!this.activeIncident && this.nextIncidentAt !== null && this.time >= this.nextIncidentAt) {
+        this.activateIncident();
+      }
+    }
+
+    incidentIsActive() {
+      return Boolean(this.activeIncident);
     }
 
     activeDirections() {
@@ -477,6 +562,7 @@
       const source = config || {};
       const previousMode = this.config.mode;
       const previousSeed = this.config.seed;
+      const previousIncidentEnabled = this.config.incident;
       const validated = {};
       for (const key of ["mode", "demand", "speedLimit", "signalCycle", "greenSplit", "incident", "busPriority", "roadCondition", "reactionTime", "brakeBuildTime", "seed"]) {
         if (Object.prototype.hasOwnProperty.call(source, key)) {
@@ -521,9 +607,13 @@
       const modeChanged = validated.mode !== undefined && validated.mode !== previousMode;
       if (!this.externalRandom && (seedChanged || modeChanged)) {
         this.random = createSeededRandom(this.config.seed);
+        this.incidentRandom = createSeededRandom(`${this.config.seed}:incidents`);
       }
       if (modeChanged || seedChanged) {
         this.resetVehicleState();
+      }
+      if (modeChanged || seedChanged || this.config.incident !== previousIncidentEnabled) {
+        this.resetIncidentState();
       }
       for (const vehicle of this.vehicles) {
         vehicle.speed = (this.config.speedLimit / 3.6) * vehicle.speedRatio;
@@ -578,6 +668,8 @@
     step(deltaSeconds) {
       const dt = clamp(deltaSeconds ?? 0, 0, MAX_STEP_SECONDS);
       this.time += dt;
+      this.updateIncidentState();
+      this.removeResolvedCrashes();
       this.spawnVehicles(dt);
       this.refreshSignal(this.getPrioritySignal());
       this.moveVehicles(dt);
@@ -627,6 +719,8 @@
         for (let index = 0; index < routeVehicles.length; index += 1) {
           const vehicle = routeVehicles[index];
           if (vehicle.crashed) continue;
+          vehicle.laneChangeCooldown = Math.max(0, (vehicle.laneChangeCooldown || 0) - dt);
+          this.evaluateLaneChange(vehicle, routeVehicles, dt);
           const leader = findClosestLeader(vehicle, routeVehicles);
           const target = this.computeTargetSpeed(vehicle, leader);
           vehicle.waiting = target.waiting;
@@ -639,17 +733,7 @@
             : effectiveMaxAccelerationMps2(vehicle, this.config)) * dt;
           vehicle.currentSpeed += clamp(speedDelta, -maxDelta, maxDelta);
           vehicle.currentSpeed = clamp(vehicle.currentSpeed, 0, vehicle.speed);
-          vehicle.laneOffset += clamp(
-            vehicle.laneTargetOffset - vehicle.laneOffset,
-            -LANE_CHANGE_RATE_PX_PER_SECOND * dt,
-            LANE_CHANGE_RATE_PX_PER_SECOND * dt
-          );
-          if (vehicle.laneChanging && Math.abs(vehicle.laneTargetOffset - vehicle.laneOffset) < LANE_CHANGE_SNAP_TOLERANCE_PX) {
-            vehicle.laneOffset = vehicle.laneTargetOffset;
-            vehicle.lane = vehicle.targetLane;
-            vehicle.laneChanging = false;
-            vehicle.laneChange = null;
-          }
+          this.advanceLaneChange(vehicle, dt);
           const previousPosition = vehicle.position;
           vehicle.previousPosition = previousPosition;
           vehicle.previousX = vehicle.x;
@@ -703,7 +787,7 @@
     }
 
     enforceIncidentBoundary(vehicle, previousPosition) {
-      if (!this.config.incident || this.config.mode !== "highway" || vehicle.direction !== "east") return;
+      if (!this.incidentIsActive() || this.config.mode !== "highway" || vehicle.direction !== "east") return;
       const incidentBounds = ROAD_MODEL.bounds.incident;
       const laneOffset = vehicle.laneOffset ?? 0;
       const laneBlocked = activeVehicleLanes(vehicle).includes(0) ||
@@ -751,15 +835,164 @@
     }
 
     startLaneChange(vehicle, targetLane) {
-      if (vehicle.laneChanging || vehicle.targetLane === targetLane) return;
+      if (vehicle.laneChanging || vehicle.lane === targetLane) return;
       const laneJitter = vehicle.laneJitter || 0;
+      const driverDurationScale = vehicle.driver && vehicle.driver.type === "cautious"
+        ? 1.12
+        : (vehicle.driver && vehicle.driver.type === "assertive" ? 0.88 : 1);
+      const duration = clamp(
+        randomBetween(this.random, LANE_CHANGE_MIN_DURATION_SECONDS, LANE_CHANGE_MAX_DURATION_SECONDS) * driverDurationScale,
+        LANE_CHANGE_MIN_DURATION_SECONDS,
+        LANE_CHANGE_MAX_DURATION_SECONDS
+      );
       vehicle.targetLane = targetLane;
       vehicle.laneTargetOffset = laneOffsetForVehicle(this.config, vehicle.direction, targetLane, laneJitter);
       vehicle.laneChanging = true;
       vehicle.laneChange = {
         sourceLane: vehicle.lane,
-        targetLane
+        targetLane,
+        reason: vehicle.laneChangeIntent ? vehicle.laneChangeIntent.reason : "traffic",
+        startOffset: vehicle.laneOffset,
+        endOffset: vehicle.laneTargetOffset,
+        elapsed: 0,
+        duration
       };
+      vehicle.laneChangeIntent = null;
+    }
+
+    advanceLaneChange(vehicle, dt) {
+      if (!vehicle.laneChanging || !vehicle.laneChange) return;
+      const change = vehicle.laneChange;
+      change.startOffset = change.startOffset ?? vehicle.laneOffset;
+      change.endOffset = change.endOffset ?? vehicle.laneTargetOffset;
+      change.elapsed = (change.elapsed || 0) + dt;
+      change.duration = Math.max(change.duration || LANE_CHANGE_MIN_DURATION_SECONDS, 0.1);
+      const progress = clamp(change.elapsed / change.duration, 0, 1);
+      const smoothProgress = progress * progress * (3 - 2 * progress);
+      vehicle.laneOffset = change.startOffset + (change.endOffset - change.startOffset) * smoothProgress;
+      if (progress < 1 && Math.abs(vehicle.laneTargetOffset - vehicle.laneOffset) >= LANE_CHANGE_SNAP_TOLERANCE_PX) return;
+      vehicle.laneOffset = vehicle.laneTargetOffset;
+      vehicle.lane = vehicle.targetLane;
+      vehicle.laneChanging = false;
+      vehicle.laneChange = null;
+      vehicle.laneChangeCooldown = randomBetween(
+        this.random,
+        LANE_CHANGE_MIN_COOLDOWN_SECONDS,
+        LANE_CHANGE_MAX_COOLDOWN_SECONDS
+      );
+    }
+
+    closestVehicleInLane(vehicle, candidates, lane, ahead) {
+      let closest = null;
+      let closestDistance = Infinity;
+      for (const other of candidates) {
+        if (other === vehicle || other.direction !== vehicle.direction || !activeVehicleLanes(other).includes(lane)) continue;
+        const relativePosition = (other.position - vehicle.position) * vehicle.route.sign;
+        if ((ahead && relativePosition <= 0) || (!ahead && relativePosition >= 0)) continue;
+        const distance = Math.abs(relativePosition);
+        if (distance < closestDistance) {
+          closest = other;
+          closestDistance = distance;
+        }
+      }
+      return closest ? { vehicle: closest, distance: closestDistance } : null;
+    }
+
+    laneExpectedSpeed(vehicle, candidates, lane) {
+      const leader = this.closestVehicleInLane(vehicle, candidates, lane, true);
+      return leader && leader.distance < OVERTAKE_LOOKAHEAD_PX
+        ? leader.vehicle.currentSpeed || 0
+        : vehicle.speed;
+    }
+
+    canChangeLane(vehicle, targetLane, candidates) {
+      if (this.config.mode !== "highway" || targetLane < 0 || targetLane >= LANES_PER_DIRECTION) return false;
+      const laneVehicles = candidates || this.vehicles;
+      const front = this.closestVehicleInLane(vehicle, laneVehicles, targetLane, true);
+      const rear = this.closestVehicleInLane(vehicle, laneVehicles, targetLane, false);
+      const reactionSeconds = driverReactionTimeSeconds(vehicle, this.config) + this.config.brakeBuildTime;
+      const frontClearance = Math.max(
+        LANE_CHANGE_FRONT_CLEARANCE_PX,
+        vehicle.currentSpeed * reactionSeconds * PX_PER_METER * 0.32
+      ) + (vehicle.length || 22) / 2;
+      if (front && front.distance < frontClearance + (front.vehicle.length || 22) / 2) return false;
+      if (!rear) return true;
+      const rearSpeed = rear.vehicle.currentSpeed || 0;
+      const rearClosingSpeed = Math.max(0, rearSpeed - vehicle.currentSpeed);
+      const rearClearance = LANE_CHANGE_BACK_CLEARANCE_PX +
+        rearSpeed * reactionSeconds * PX_PER_METER * 0.24 +
+        rearClosingSpeed * reactionSeconds * PX_PER_METER * 0.35 +
+        (rear.vehicle.length || 22) / 2;
+      return rear.distance >= rearClearance;
+    }
+
+    requestLaneChange(vehicle, targetLane, reason) {
+      if (vehicle.laneChangeIntent && vehicle.laneChangeIntent.targetLane === targetLane && vehicle.laneChangeIntent.reason === reason) return;
+      const reactionScale = vehicle.driver ? vehicle.driver.reactionScale ?? 1 : 1;
+      vehicle.laneChangeIntent = {
+        targetLane,
+        reason,
+        decisionRemaining: randomBetween(
+          this.random,
+          LANE_CHANGE_MIN_DECISION_SECONDS,
+          LANE_CHANGE_MAX_DECISION_SECONDS
+        ) * reactionScale
+      };
+    }
+
+    evaluateLaneChange(vehicle, candidates, dt) {
+      if (this.config.mode !== "highway" || vehicle.laneChanging || vehicle.lane === undefined) return;
+      const currentLeader = this.closestVehicleInLane(vehicle, candidates, vehicle.lane, true);
+      const incidentDistance = this.incidentIsActive() && vehicle.direction === "east" && vehicle.lane === 0
+        ? ROAD_MODEL.bounds.incident.startX - vehicle.position
+        : -1;
+      const maxBraking = effectiveMaxBrakingMps2(vehicle, this.config);
+      const incidentRecognitionDistance = Math.max(
+        OVERTAKE_LOOKAHEAD_PX,
+        vehicle.currentSpeed * (driverReactionTimeSeconds(vehicle, this.config) + this.config.brakeBuildTime) * PX_PER_METER +
+          vehicle.currentSpeed * vehicle.currentSpeed / (2 * maxBraking) * PX_PER_METER
+      );
+      const incidentAhead = incidentDistance > 0 && incidentDistance < incidentRecognitionDistance;
+      const incidentBlocksReturn = this.incidentIsActive() &&
+        vehicle.direction === "east" &&
+        vehicle.position <= ROAD_MODEL.bounds.incident.endX + INCIDENT_CLEARANCE_PX;
+      let targetLane = null;
+      let reason = null;
+
+      if (incidentAhead) {
+        targetLane = 1;
+        reason = "incident";
+      } else if (
+        vehicle.lane === 0 &&
+        currentLeader &&
+        currentLeader.distance < OVERTAKE_LOOKAHEAD_PX &&
+        this.laneExpectedSpeed(vehicle, candidates, 1) >= (currentLeader.vehicle.currentSpeed || 0) + OVERTAKE_SPEED_ADVANTAGE_MPS
+      ) {
+        targetLane = 1;
+        reason = "overtake";
+      } else if (
+        vehicle.lane === 1 &&
+        vehicle.laneChangeCooldown <= 0 &&
+        !incidentBlocksReturn &&
+        this.laneExpectedSpeed(vehicle, candidates, 0) >= vehicle.currentSpeed * 0.9
+      ) {
+        targetLane = 0;
+        reason = "return";
+      }
+
+      if (targetLane === null) {
+        vehicle.laneChangeIntent = null;
+        return;
+      }
+      this.requestLaneChange(vehicle, targetLane, reason);
+      vehicle.laneChangeIntent.decisionRemaining = Math.max(0, vehicle.laneChangeIntent.decisionRemaining - dt);
+      if (
+        vehicle.laneChangeIntent.decisionRemaining <= 0 &&
+        vehicle.laneChangeCooldown <= 0 &&
+        this.canChangeLane(vehicle, targetLane, candidates)
+      ) {
+        this.startLaneChange(vehicle, targetLane);
+      }
     }
 
     computeTargetSpeed(vehicle, leader) {
@@ -787,8 +1020,8 @@
         }
       }
 
-      // The incident marker is positioned in the eastbound lane only.
-      if (this.config.incident && vehicle.direction === "east") {
+      // The scheduled incident marker closes the eastbound lane nearest its fixed road position.
+      if (this.incidentIsActive() && vehicle.direction === "east") {
         const incidentBounds = ROAD_MODEL.bounds.incident;
         const distanceToIncident = incidentBounds.startX - vehicle.position;
         const maxBraking = effectiveMaxBrakingMps2(vehicle, this.config);
@@ -801,22 +1034,30 @@
             (vehicle.currentSpeed * vehicle.currentSpeed / (2 * maxBraking)) * PX_PER_METER
         );
         const usesBlockedLane = activeVehicleLanes(vehicle).includes(0);
-        const canChangeLane = this.config.mode === "highway" &&
-          usesBlockedLane &&
-          !vehicle.laneChanging &&
-          this.canChangeIncidentLane(vehicle);
-        if (this.config.mode === "highway" && usesBlockedLane && distanceToIncident > 0 && distanceToIncident < incidentLookahead && canChangeLane) {
-          this.startLaneChange(vehicle, 1);
-          target = Math.min(target, vehicle.speed * LANE_CHANGE_SPEED_RATIO);
-          waiting = true;
-        } else if (this.config.mode !== "highway" || usesBlockedLane) {
+        if (this.config.mode === "highway" && usesBlockedLane) {
           if (
             distanceToIncident > 0 && distanceToIncident < incidentLookahead ||
             vehicle.position >= incidentBounds.startX && vehicle.position <= incidentBounds.endX + INCIDENT_CLEARANCE_PX
           ) {
-            target = 0;
-            waiting = true;
+            const stoppingDistancePx = Math.max(
+              0,
+              distanceToIncident - vehicle.length / 2 - VEHICLE_BUFFER_PX
+            );
+            const safeApproachSpeed = Math.sqrt(2 * maxBraking * stoppingDistancePx / PX_PER_METER) * 0.72;
+            const maneuverRatio = vehicle.laneChanging
+              ? LANE_CHANGE_SPEED_RATIO
+              : INCIDENT_APPROACH_SPEED_RATIO;
+            target = Math.min(target, vehicle.speed * maneuverRatio, safeApproachSpeed);
+            waiting = waiting || target < WAITING_SPEED_MPS;
           }
+        } else if (
+          this.config.mode !== "highway" &&
+          usesBlockedLane &&
+          (distanceToIncident > 0 && distanceToIncident < incidentLookahead ||
+            vehicle.position >= incidentBounds.startX && vehicle.position <= incidentBounds.endX + INCIDENT_CLEARANCE_PX)
+        ) {
+          target = 0;
+          waiting = true;
         }
         if (
           this.config.mode === "highway" &&
@@ -824,8 +1065,8 @@
           vehicle.laneOffset !== undefined &&
           Math.abs(vehicle.laneOffset) < INCIDENT_LANE_CLEARANCE_OFFSET_PX
         ) {
-          target = 0;
-          waiting = true;
+          target = Math.min(target, vehicle.speed * LANE_CHANGE_SPEED_RATIO);
+          waiting = waiting || target < WAITING_SPEED_MPS;
         }
       }
 
@@ -859,13 +1100,7 @@
 
     canChangeIncidentLane(vehicle) {
       if (this.config.mode !== "highway") return false;
-      return !this.vehicles.some((other) => {
-        if (other === vehicle || other.direction !== vehicle.direction || !activeVehicleLanes(other).includes(1)) return false;
-        const relativePosition = (other.position - vehicle.position) * vehicle.route.sign;
-        const backClearance = LANE_CHANGE_BACK_CLEARANCE_PX + (other.length || 22) / 2;
-        const frontClearance = LANE_CHANGE_FRONT_CLEARANCE_PX + (vehicle.length || 22) / 2;
-        return relativePosition > -backClearance && relativePosition < frontClearance;
-      });
+      return this.canChangeLane(vehicle, 1, this.vehicles);
     }
 
     detectCollisions() {
@@ -902,12 +1137,15 @@
     }
 
     markCollision(first, second, impactSpeedKmh) {
+      const crashClearAt = first.crashClearAt || second.crashClearAt || this.time + this.incidentDurationSeconds();
       first.crashed = true;
       second.crashed = true;
       first.currentSpeed = 0;
       second.currentSpeed = 0;
       first.collisionSpeedKmh = impactSpeedKmh;
       second.collisionSpeedKmh = impactSpeedKmh;
+      first.crashClearAt = crashClearAt;
+      second.crashClearAt = crashClearAt;
       first.waiting = true;
       second.waiting = true;
       this.separateCollisionPair(first, second);
@@ -936,6 +1174,31 @@
       this.completedTrips += before - this.vehicles.length;
     }
 
+    removeResolvedCrashes() {
+      const before = this.vehicles.length;
+      this.vehicles = this.vehicles.filter((vehicle) => {
+        return !vehicle.crashed || !vehicle.crashClearAt || vehicle.crashClearAt > this.time;
+      });
+      this.resolvedCrashCount += before - this.vehicles.length;
+    }
+
+    getIncidentSnapshot() {
+      return {
+        enabled: Boolean(this.config.incident),
+        active: this.incidentIsActive(),
+        startedAt: this.activeIncident ? this.activeIncident.startedAt : null,
+        clearsAt: this.activeIncident ? this.activeIncident.clearsAt : null,
+        nextStartAt: this.activeIncident ? null : this.nextIncidentAt,
+        remainingSeconds: this.activeIncident
+          ? Math.max(0, this.activeIncident.clearsAt - this.time)
+          : null,
+        startsInSeconds: !this.activeIncident && this.nextIncidentAt !== null
+          ? Math.max(0, this.nextIncidentAt - this.time)
+          : null,
+        count: this.incidentCount
+      };
+    }
+
     getMetrics() {
       const vehicleCount = this.vehicles.length;
       const avgMps = vehicleCount
@@ -948,7 +1211,11 @@
         brakingVehicles: this.vehicles.filter((vehicle) => vehicle.braking).length,
         collisionVehicles: this.vehicles.filter((vehicle) => vehicle.crashed).length,
         collisionSeverityKmh: this.vehicles.reduce((max, vehicle) => Math.max(max, vehicle.collisionSpeedKmh || 0), 0),
-        completedTrips: this.completedTrips
+        completedTrips: this.completedTrips,
+        resolvedCrashVehicles: this.resolvedCrashCount,
+        incidentActive: this.incidentIsActive(),
+        incidentRemainingSeconds: this.activeIncident ? Math.max(0, this.activeIncident.clearsAt - this.time) : null,
+        nextIncidentSeconds: !this.activeIncident && this.nextIncidentAt !== null ? Math.max(0, this.nextIncidentAt - this.time) : null
       };
     }
 
@@ -960,24 +1227,29 @@
         lane: vehicle.lane,
         targetLane: vehicle.targetLane,
         laneChanging: Boolean(vehicle.laneChanging),
+        laneChangeReason: vehicle.laneChange ? vehicle.laneChange.reason : null,
         position: Number(vehicle.position.toFixed(2)),
         currentSpeed: Number(vehicle.currentSpeed.toFixed(3)),
         driverType: vehicle.driver ? vehicle.driver.type : "normal",
         waiting: Boolean(vehicle.waiting),
         braking: Boolean(vehicle.braking),
         crashed: Boolean(vehicle.crashed),
-        collisionSpeedKmh: vehicle.collisionSpeedKmh || 0
+        collisionSpeedKmh: vehicle.collisionSpeedKmh || 0,
+        crashClearAt: vehicle.crashClearAt === null || vehicle.crashClearAt === undefined
+          ? null
+          : Number(vehicle.crashClearAt.toFixed(2))
       };
     }
 
     serializeScenario() {
       const snapshot = this.getSnapshot();
       return {
-        schemaVersion: 2,
+        schemaVersion: 3,
         roadModelVersion: ROAD_MODEL.version,
         seed: this.config.seed,
         config: Object.assign({}, this.config),
         time: snapshot.time,
+        incident: snapshot.incident,
         metrics: snapshot.metrics,
         vehicles: snapshot.vehicles.map((vehicle) => this.serializeVehicle(vehicle))
       };
@@ -990,6 +1262,7 @@
           route: Object.assign({}, vehicle.route)
         })),
         signal: Object.assign({}, this.lastSignal),
+        incident: this.getIncidentSnapshot(),
         metrics: this.getMetrics(),
         config: Object.assign({}, this.config),
         roadModelVersion: ROAD_MODEL.version
@@ -1010,6 +1283,8 @@
     normalizeSeed,
     createSeededRandom,
     PX_PER_METER,
-    MAX_STEP_SECONDS
+    MAX_STEP_SECONDS,
+    INCIDENT_MIN_DURATION_SECONDS,
+    INCIDENT_MAX_DURATION_SECONDS
   };
 });

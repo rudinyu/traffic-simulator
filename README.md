@@ -10,16 +10,18 @@ intersection congestion, highway flow, throughput, and delayed braking.
 
 - Real-time Canvas visualization of four-way intersection traffic.
 - Adjustable traffic demand, speed limit, signal cycle, and green split.
-- Optional incident bottleneck and bus signal priority scenarios.
+- Seeded random incidents with automatic 30–120 simulated-minute clearance and repeat scheduling.
 - Highway mode with opposing traffic streams and no intersection signals.
 - Adjustable driver reaction time and brake build-up time to study braking delay.
 - Road-condition presets for dry, wet, and icy pavement with friction-limited acceleration and braking.
 - Per-vehicle driver profiles that vary reaction time, desired headway, acceleration, and braking capability.
+- Human-like lane-change behavior with perception delay, gap acceptance, turn signals, cooldowns, and smooth multi-second trajectories.
 - Physics-based acceleration, braking distance, lane following, lane changing, and collision response.
 - Two lanes per direction with predictive collision avoidance and intersection clearance phases.
 - Shared roadway data model used by both the simulation engine and Canvas renderer.
 - Reproducible scenario seeds and JSON snapshot export for demos, reports, and regression checks.
 - Live average speed, vehicle count, queue length, and completed trip metrics.
+- 1x, 10x, and 60x simulation speeds for observing long incident lifecycles.
 
 ## Commercialization Gaps
 
@@ -63,10 +65,12 @@ npm run check
 - 支援乾燥、濕滑、結冰路面，會影響摩擦限制下的加速與煞車。
 - 每台車有駕駛者差異，會影響反應時間、跟車距離、加速與煞車能力。
 - 使用物理式加速度、煞車距離、跟車安全距離、換道與碰撞反應。
+- 換道包含駕駛察覺延遲、前後車距判斷、方向燈、冷卻時間與 2–4 秒平滑橫移。
 - 每個方向兩條車道，具備碰撞預測與路口清空號誌階段。
 - 模擬核心與 Canvas 畫面共用同一份道路資料模型，降低道路切割錯位。
 - 支援情境 seed 與 JSON 快照匯出，方便重現 demo、報告與回歸測試。
-- 可啟用事故瓶頸與公車號誌優先情境。
+- 可啟用依 Seed 重現的隨機事故；事故會在模擬時間 30–120 分鐘後自動解除並排定下一次事件。
+- 支援 1x、10x、60x 模擬速度，方便觀察長時間事故生命週期。
 - 即時顯示平均速度、網路車輛數、排隊長度與完成旅次。
 
 網站支援 English / 繁體中文切換，語言偏好會保存在瀏覽器中。
