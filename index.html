@@ -93,6 +93,14 @@
             <output id="speedOut" for="speedLimit">50 km/h</output>
           </label>
           <label>
+            <span data-i18n="roadCondition">Road Condition</span>
+            <select id="roadCondition">
+              <option value="dry" data-i18n="dryRoad">Dry</option>
+              <option value="wet" data-i18n="wetRoad">Wet</option>
+              <option value="icy" data-i18n="icyRoad">Icy</option>
+            </select>
+          </label>
+          <label>
             <span data-i18n="signalCycle">Signal Cycle</span>
             <input id="signalCycle" type="range" min="18" max="90" value="42">
             <output id="cycleOut" for="signalCycle">42 sec</output>
@@ -141,6 +149,7 @@
             <li data-i18n="noteIncident">The incident bottleneck closes one lane and increases queues.</li>
             <li data-i18n="noteBus">Bus priority extends the green phase when a bus approaches the intersection.</li>
             <li data-i18n="noteBraking">Highway braking delay combines reaction time with brake build-up time before deceleration begins.</li>
+            <li data-i18n="notePhysics">Wet and icy roads reduce friction, lengthen stopping distance, and increase following gaps.</li>
           </ul>
         </section>
       </aside>

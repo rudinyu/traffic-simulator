@@ -17,6 +17,7 @@
     greenSplit: 52,
     incident: false,
     busPriority: true,
+    roadCondition: "dry",
     reactionTime: 1.2,
     brakeBuildTime: 0.5,
     seed: "demo-traffic"
@@ -61,6 +62,16 @@
   const LATERAL_CONTACT_TOLERANCE_PX = 20;
   // Fraction of a frame; 0 means exact simultaneous crossing, 1 means a whole frame apart.
   const PATH_CROSSING_TIME_TOLERANCE = 0.35;
+  const ROAD_CONDITIONS = Object.freeze({
+    dry: Object.freeze({ label: "dry", brakingScale: 1, accelerationScale: 1, headwayScale: 1 }),
+    wet: Object.freeze({ label: "wet", brakingScale: 0.68, accelerationScale: 0.9, headwayScale: 1.24 }),
+    icy: Object.freeze({ label: "icy", brakingScale: 0.38, accelerationScale: 0.62, headwayScale: 1.75 })
+  });
+  const DRIVER_PROFILES = Object.freeze([
+    Object.freeze({ type: "cautious", reactionScale: 1.18, headwayScale: 1.22, accelerationScale: 0.85, brakingScale: 0.92 }),
+    Object.freeze({ type: "normal", reactionScale: 1, headwayScale: 1, accelerationScale: 1, brakingScale: 1 }),
+    Object.freeze({ type: "assertive", reactionScale: 0.86, headwayScale: 0.88, accelerationScale: 1.12, brakingScale: 1.05 })
+  ]);
 
   const ROAD_MODEL = Object.freeze({
     version: 1,
@@ -181,6 +192,42 @@
     return laneCenterOffset(config.mode, direction, lane) + laneJitter;
   }
 
+  function normalizeRoadCondition(value) {
+    return Object.prototype.hasOwnProperty.call(ROAD_CONDITIONS, value) ? value : DEFAULT_CONFIG.roadCondition;
+  }
+
+  function roadConditionForConfig(config) {
+    return ROAD_CONDITIONS[normalizeRoadCondition(config.roadCondition)];
+  }
+
+  function createDriverProfile(random) {
+    const roll = random();
+    const base = roll < 0.24
+      ? DRIVER_PROFILES[0]
+      : roll > 0.78 ? DRIVER_PROFILES[2] : DRIVER_PROFILES[1];
+    return Object.assign({}, base);
+  }
+
+  function driverReactionTimeSeconds(vehicle, config) {
+    const reactionScale = vehicle.driver ? vehicle.driver.reactionScale : 1;
+    return config.reactionTime * reactionScale;
+  }
+
+  function driverHeadwayScale(vehicle, config) {
+    const driverScale = vehicle.driver ? vehicle.driver.headwayScale : 1;
+    return driverScale * roadConditionForConfig(config).headwayScale;
+  }
+
+  function effectiveMaxAccelerationMps2(vehicle, config) {
+    const driverScale = vehicle.driver ? vehicle.driver.accelerationScale : 1;
+    return MAX_ACCELERATION_MPS2 * driverScale * roadConditionForConfig(config).accelerationScale;
+  }
+
+  function effectiveMaxBrakingMps2(vehicle, config) {
+    const driverScale = vehicle.driver ? vehicle.driver.brakingScale : 1;
+    return MAX_BRAKING_MPS2 * driverScale * roadConditionForConfig(config).brakingScale;
+  }
+
   function activeVehicleLanes(vehicle) {
     if (vehicle.laneChanging && vehicle.laneChange) {
       return [vehicle.laneChange.sourceLane, vehicle.laneChange.targetLane];
@@ -211,6 +258,7 @@
     // Cars vary from 82%-100% of the limit; buses run at a steadier 90%.
     const speedRatio = isBus ? 0.9 : 0.82 + random() * 0.18;
     const speed = (config.speedLimit / 3.6) * speedRatio;
+    const driver = isBus ? Object.assign({}, DRIVER_PROFILES[1]) : createDriverProfile(random);
     const vehicle = {
       id,
       direction,
@@ -229,6 +277,7 @@
       speedRatio,
       speed,
       currentSpeed: speed,
+      driver,
       length: size,
       waiting: false,
       brakeDelayRemaining: 0,
@@ -429,7 +478,7 @@
       const previousMode = this.config.mode;
       const previousSeed = this.config.seed;
       const validated = {};
-      for (const key of ["mode", "demand", "speedLimit", "signalCycle", "greenSplit", "incident", "busPriority", "reactionTime", "brakeBuildTime", "seed"]) {
+      for (const key of ["mode", "demand", "speedLimit", "signalCycle", "greenSplit", "incident", "busPriority", "roadCondition", "reactionTime", "brakeBuildTime", "seed"]) {
         if (Object.prototype.hasOwnProperty.call(source, key)) {
           validated[key] = source[key];
         }
@@ -454,6 +503,9 @@
       }
       if (validated.busPriority !== undefined) {
         validated.busPriority = Boolean(validated.busPriority);
+      }
+      if (validated.roadCondition !== undefined) {
+        validated.roadCondition = normalizeRoadCondition(validated.roadCondition);
       }
       if (validated.reactionTime !== undefined) {
         validated.reactionTime = clamp(validated.reactionTime, 0, 3);
@@ -582,7 +634,9 @@
             ? this.applyBrakeDelay(vehicle, target.speed, dt)
             : target.speed;
           const speedDelta = effectiveTarget - vehicle.currentSpeed;
-          const maxDelta = (speedDelta < 0 ? MAX_BRAKING_MPS2 : MAX_ACCELERATION_MPS2) * dt;
+          const maxDelta = (speedDelta < 0
+            ? effectiveMaxBrakingMps2(vehicle, this.config)
+            : effectiveMaxAccelerationMps2(vehicle, this.config)) * dt;
           vehicle.currentSpeed += clamp(speedDelta, -maxDelta, maxDelta);
           vehicle.currentSpeed = clamp(vehicle.currentSpeed, 0, vehicle.speed);
           vehicle.laneOffset += clamp(
@@ -674,7 +728,7 @@
       const needsBraking = targetSpeed < vehicle.currentSpeed - 0.05;
       if (needsBraking && !vehicle.braking) {
         vehicle.braking = true;
-        vehicle.brakeDelayRemaining = this.config.reactionTime + this.config.brakeBuildTime;
+        vehicle.brakeDelayRemaining = driverReactionTimeSeconds(vehicle, this.config) + this.config.brakeBuildTime;
         vehicle.brakeTargetSpeed = targetSpeed;
       }
       if (!vehicle.braking) {
@@ -716,10 +770,12 @@
       const signal = vehicle.route.signal ? this.lastSignal[vehicle.route.signal] : "green";
 
       if (this.config.mode !== "highway") {
+        const maxBraking = effectiveMaxBrakingMps2(vehicle, this.config);
+        const reactionDistance = vehicle.currentSpeed * driverReactionTimeSeconds(vehicle, this.config) * 0.35 * PX_PER_METER;
         const signalLookahead = Math.max(
           RED_LIGHT_LOOKAHEAD_PX,
-          (vehicle.currentSpeed * vehicle.currentSpeed / (2 * MAX_BRAKING_MPS2)) * PX_PER_METER +
-            vehicle.currentSpeed * 0.35 * PX_PER_METER
+          (vehicle.currentSpeed * vehicle.currentSpeed / (2 * maxBraking)) * PX_PER_METER +
+            reactionDistance
         );
         if (
           signal === "red" &&
@@ -735,12 +791,14 @@
       if (this.config.incident && vehicle.direction === "east") {
         const incidentBounds = ROAD_MODEL.bounds.incident;
         const distanceToIncident = incidentBounds.startX - vehicle.position;
+        const maxBraking = effectiveMaxBrakingMps2(vehicle, this.config);
+        const reactionSeconds = this.config.mode === "highway"
+          ? driverReactionTimeSeconds(vehicle, this.config) + this.config.brakeBuildTime
+          : driverReactionTimeSeconds(vehicle, this.config) * 0.35;
         const incidentLookahead = Math.max(
           INCIDENT_LOOKAHEAD_PX,
-          vehicle.currentSpeed * (this.config.mode === "highway"
-            ? this.config.reactionTime + this.config.brakeBuildTime
-            : 0) * PX_PER_METER +
-            (vehicle.currentSpeed * vehicle.currentSpeed / (2 * MAX_BRAKING_MPS2)) * PX_PER_METER
+          vehicle.currentSpeed * reactionSeconds * PX_PER_METER +
+            (vehicle.currentSpeed * vehicle.currentSpeed / (2 * maxBraking)) * PX_PER_METER
         );
         const usesBlockedLane = activeVehicleLanes(vehicle).includes(0);
         const canChangeLane = this.config.mode === "highway" &&
@@ -773,15 +831,17 @@
 
       if (leader) {
         const gap = (leader.position - vehicle.position) * vehicle.route.sign - (leader.length + vehicle.length) / 2;
+        const maxBraking = effectiveMaxBrakingMps2(vehicle, this.config);
+        const reactionSeconds = driverReactionTimeSeconds(vehicle, this.config);
         const desiredGap = this.config.mode === "highway"
-          ? FOLLOWING_GAP_PX + vehicle.currentSpeed * this.config.reactionTime * PX_PER_METER * HIGHWAY_HEADWAY_FACTOR
-          : FOLLOWING_GAP_PX;
+          ? FOLLOWING_GAP_PX + vehicle.currentSpeed * reactionSeconds * PX_PER_METER * HIGHWAY_HEADWAY_FACTOR * driverHeadwayScale(vehicle, this.config)
+          : FOLLOWING_GAP_PX * driverHeadwayScale(vehicle, this.config);
         const closingSpeed = Math.max(0, vehicle.currentSpeed - leader.currentSpeed);
         const responseTime = this.config.mode === "highway"
-          ? this.config.reactionTime + this.config.brakeBuildTime
+          ? reactionSeconds + this.config.brakeBuildTime
           : 0.35;
         const reactionDistance = closingSpeed * responseTime * PX_PER_METER;
-        const brakingDistance = closingSpeed * closingSpeed / (2 * MAX_BRAKING_MPS2) * PX_PER_METER;
+        const brakingDistance = closingSpeed * closingSpeed / (2 * maxBraking) * PX_PER_METER;
         const safeGap = desiredGap + reactionDistance + brakingDistance;
         if (gap < safeGap) {
           const gapRatio = clamp((gap - VEHICLE_BUFFER_PX) / Math.max(1, safeGap), 0, 1);
@@ -902,6 +962,7 @@
         laneChanging: Boolean(vehicle.laneChanging),
         position: Number(vehicle.position.toFixed(2)),
         currentSpeed: Number(vehicle.currentSpeed.toFixed(3)),
+        driverType: vehicle.driver ? vehicle.driver.type : "normal",
         waiting: Boolean(vehicle.waiting),
         braking: Boolean(vehicle.braking),
         crashed: Boolean(vehicle.crashed),
@@ -912,7 +973,7 @@
     serializeScenario() {
       const snapshot = this.getSnapshot();
       return {
-        schemaVersion: 1,
+        schemaVersion: 2,
         roadModelVersion: ROAD_MODEL.version,
         seed: this.config.seed,
         config: Object.assign({}, this.config),
@@ -942,6 +1003,7 @@
     ROUTES,
     HIGHWAY_ROUTES,
     ROAD_MODEL,
+    ROAD_CONDITIONS,
     STOP_LINES,
     signalState,
     clamp,

@@ -4,6 +4,7 @@ const {
   ROUTES,
   HIGHWAY_ROUTES,
   ROAD_MODEL,
+  ROAD_CONDITIONS,
   STOP_LINES,
   MAX_STEP_SECONDS,
   signalState,
@@ -258,6 +259,15 @@ runTest("setConfig coerces boolean controls", () => {
   assert.strictEqual(sim.config.busPriority, false);
 });
 
+runTest("setConfig validates road condition", () => {
+  const sim = new TrafficSimulation({ random: deterministicRandom() });
+  assert.strictEqual(ROAD_CONDITIONS.icy.brakingScale < ROAD_CONDITIONS.dry.brakingScale, true);
+  sim.setConfig({ roadCondition: "icy" });
+  assert.strictEqual(sim.config.roadCondition, "icy");
+  sim.setConfig({ roadCondition: "unknown" });
+  assert.strictEqual(sim.config.roadCondition, "dry");
+});
+
 runTest("canSpawn blocks vehicles that are too close to the entry", () => {
   const sim = new TrafficSimulation({ random: deterministicRandom() });
   assert.strictEqual(sim.canSpawn("east"), true);
@@ -479,6 +489,48 @@ runTest("vehicle past stop line is not re-stopped by red light", () => {
   };
   const result = sim.computeTargetSpeed(vehicle, null);
   assert.strictEqual(result.speed, vehicle.speed, "vehicle past stop line must travel at full speed");
+});
+
+runTest("icy road reduces available braking compared with dry road", () => {
+  function setup(roadCondition) {
+    const sim = new TrafficSimulation({
+      random: deterministicRandom(),
+      config: { roadCondition, speedLimit: 80, reactionTime: 1.2 }
+    });
+    sim.lastSignal = signalState(25, { signalCycle: 40, greenSplit: 50, busPriority: false }, null);
+    const vehicle = {
+      direction: "east",
+      route: Object.assign({}, ROUTES.east),
+      position: 400,
+      progress: 480,
+      x: 400,
+      y: 330,
+      previousX: 400,
+      previousY: 330,
+      speed: 20,
+      currentSpeed: 20,
+      length: 22,
+      lane: 0,
+      targetLane: 0,
+      laneOffset: 0,
+      laneTargetOffset: 0,
+      laneChanging: false,
+      braking: false,
+      brakeDelayRemaining: 0,
+      brakeTargetSpeed: 20,
+      crashed: false,
+      waiting: false
+    };
+    sim.vehicles = [vehicle];
+    return { sim, vehicle };
+  }
+
+  const dry = setup("dry");
+  const icy = setup("icy");
+  dry.sim.moveVehicles(0.08);
+  icy.sim.moveVehicles(0.08);
+  assert(dry.vehicle.currentSpeed < icy.vehicle.currentSpeed, "dry road should allow stronger deceleration than icy road");
+  assert(icy.vehicle.waiting, "icy-road vehicle should still identify the red light as a stop condition");
 });
 
 runTest("follower brakes when too close to leader", () => {
@@ -739,7 +791,7 @@ runTest("scenario export includes reproducibility metadata and metrics", () => {
   const sim = new TrafficSimulation({ config: { seed: "export-demo", demand: 70 } });
   sim.step(0.08);
   const scenario = sim.serializeScenario();
-  assert.strictEqual(scenario.schemaVersion, 1);
+  assert.strictEqual(scenario.schemaVersion, 2);
   assert.strictEqual(scenario.roadModelVersion, ROAD_MODEL.version);
   assert.strictEqual(scenario.seed, "export-demo");
   assert.strictEqual(scenario.config.seed, "export-demo");
@@ -771,6 +823,7 @@ runTest("scenario export schema keeps stable top-level and vehicle keys", () => 
     "laneChanging",
     "position",
     "currentSpeed",
+    "driverType",
     "waiting",
     "braking",
     "crashed",
