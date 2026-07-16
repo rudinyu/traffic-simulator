@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Traffic Simulation Console</title>
     <link rel="icon" href="data:,">
-    <link rel="stylesheet" href="src/styles.css?v=0.4.1">
+    <link rel="stylesheet" href="src/styles.css?v=0.5.0">
   </head>
   <body>
     <noscript>
@@ -137,10 +137,34 @@
             <input id="incident" type="checkbox" checked>
             <span data-i18n="incidentBottleneck">Enable Random Incidents</span>
           </label>
+          <label>
+            <span data-i18n="incidentFrequency">Incident Frequency</span>
+            <select id="incidentFrequency">
+              <option value="low" data-i18n="frequencyLow">Low</option>
+              <option value="normal" data-i18n="frequencyNormal" selected>Normal</option>
+              <option value="high" data-i18n="frequencyHigh">High</option>
+            </select>
+          </label>
+          <label>
+            <span data-i18n="incidentSeverity">Incident Severity</span>
+            <select id="incidentSeverity">
+              <option value="mixed" data-i18n="severityMixed" selected>Mixed</option>
+              <option value="minor" data-i18n="severityMinor">Minor</option>
+              <option value="major" data-i18n="severityMajor">Major</option>
+            </select>
+          </label>
           <label class="toggle">
             <input id="busPriority" type="checkbox" checked>
             <span data-i18n="busPriority">Bus Signal Priority</span>
           </label>
+          <fieldset class="feature-toggles">
+            <legend data-i18n="advancedScenarios">Advanced Scenarios</legend>
+            <label class="toggle"><input id="turningTraffic" type="checkbox"><span data-i18n="turningTraffic">Turning Traffic</span></label>
+            <label class="toggle"><input id="rampMerge" type="checkbox"><span data-i18n="rampMerge">Highway Ramp Merge</span></label>
+            <label class="toggle"><input id="laneClosure" type="checkbox"><span data-i18n="laneClosure">Lane Closure</span></label>
+            <label class="toggle"><input id="emergencyVehicles" type="checkbox"><span data-i18n="emergencyVehicles">Emergency Vehicles</span></label>
+            <label class="toggle"><input id="pedestrianPhase" type="checkbox"><span data-i18n="pedestrianPhase">Pedestrian Phase</span></label>
+          </fieldset>
           <label>
             <span data-i18n="scenarioSeed">Scenario Seed</span>
             <input id="scenarioSeed" type="text" maxlength="64" autocomplete="off" aria-describedby="seedHint">
@@ -148,11 +172,24 @@
           </label>
           <div class="scenario-actions">
             <button id="exportScenario" type="button" data-i18n="exportScenario">Export JSON</button>
+            <button id="importScenario" type="button" data-i18n="importScenario">Import JSON</button>
+            <button id="exportCsv" type="button" data-i18n="exportCsv">Export CSV</button>
+            <button id="captureBaseline" type="button" data-i18n="captureBaseline">Set Baseline</button>
+            <input id="scenarioFile" class="sr-only" type="file" accept="application/json,.json">
           </div>
           <label>
             <span data-i18n="scenarioJson">Scenario JSON Snapshot</span>
-            <textarea id="scenarioOutput" readonly rows="7" spellcheck="false"></textarea>
+            <textarea id="scenarioOutput" rows="7" spellcheck="false"></textarea>
           </label>
+          <p id="scenarioMessage" class="scenario-message" aria-live="polite"></p>
+        </section>
+
+        <section class="reports">
+          <h2 data-i18n="analysis">Analysis</h2>
+          <canvas id="metricsChart" width="360" height="180" role="img" aria-label="Traffic speed and queue time series"></canvas>
+          <p id="comparisonSummary" class="comparison-summary" data-i18n="baselineEmpty">Set a baseline to compare the current run.</p>
+          <h3 data-i18n="recentEvents">Recent Events</h3>
+          <ol id="eventLog" class="event-log"></ol>
         </section>
 
         <section>
@@ -168,7 +205,7 @@
       </aside>
     </main>
 
-    <script src="src/simulation.js?v=0.4.1" defer></script>
-    <script src="src/app.js?v=0.4.1" defer></script>
+    <script src="src/simulation.js?v=0.5.0" defer></script>
+    <script src="src/app.js?v=0.5.0" defer></script>
   </body>
 </html>

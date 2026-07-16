@@ -1,13 +1,14 @@
 {
   "name": "traffic-simulator",
-  "version": "0.4.1",
+  "version": "0.5.0",
   "private": true,
   "description": "Interactive browser traffic simulation for road capacity, signal timing, incidents, and bus priority experiments.",
   "main": "src/simulation.js",
   "scripts": {
     "test": "node test/simulation.test.js",
+    "test:e2e": "playwright test",
     "build": "node scripts/build-check.js",
-    "check": "node --check src/app.js && node --check src/simulation.js && node --check scripts/build-check.js && node --check test/simulation.test.js"
+    "check": "node --check src/app.js && node --check src/simulation.js && node --check scripts/build-check.js && node --check scripts/serve.js && node --check playwright.config.js && node --check test/simulation.test.js && node --check test/e2e/app.spec.js"
   },
   "keywords": [
     "traffic",
@@ -15,5 +16,8 @@
     "transportation",
     "canvas"
   ],
-  "license": "MIT"
+  "license": "MIT",
+  "devDependencies": {
+    "@playwright/test": "1.61.0"
+  }
 }

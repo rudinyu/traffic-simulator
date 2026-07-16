@@ -1,3 +1,5 @@
 CODEX_CLAUDE_REVIEW.md
 node_modules/
+playwright-report/
+test-results/
 .DS_Store
