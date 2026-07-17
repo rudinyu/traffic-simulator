@@ -644,7 +644,7 @@ runTest("incident caps speed in its selected direction and lane", () => {
   assert(result.waiting, "vehicle inside incident zone must be marked waiting");
 });
 
-runTest("incident reduces throughput conditions under heavy demand", () => {
+runTest("incident traffic keeps moving through cooperative lane changes under heavy demand", () => {
   const base = new TrafficSimulation({
     random: deterministicRandom(),
     config: { demand: 95, speedLimit: 55, incident: false }
@@ -662,9 +662,23 @@ runTest("incident reduces throughput conditions under heavy demand", () => {
 
   const baseMetrics = base.getMetrics();
   const incidentMetrics = incident.getMetrics();
+  const incidentLaneChanges = incident.eventLog.filter((event) => (
+    event.type === "lane-change-start" && event.details.reason === "incident"
+  ));
+  const completedLaneChangeIds = new Set(incident.eventLog
+    .filter((event) => event.type === "lane-change-complete")
+    .map((event) => event.details.vehicleId));
   assert(
-    incidentMetrics.completedTrips < baseMetrics.completedTrips,
-    "expected incident scenario to reduce throughput"
+    incidentLaneChanges.length > 0,
+    "expected blocked-lane traffic to begin changing lanes"
+  );
+  assert(
+    incidentLaneChanges.some((event) => completedLaneChangeIds.has(event.details.vehicleId)),
+    "expected at least one incident lane change to complete"
+  );
+  assert(
+    incidentMetrics.completedTrips > 0,
+    "expected traffic to continue passing the incident"
   );
   assert(
     incidentMetrics.collisionVehicles <= baseMetrics.collisionVehicles,
@@ -701,6 +715,91 @@ runTest("intersection incident makes approaching vehicles brake before the block
   const result = sim.computeTargetSpeed(vehicle, null);
   assert.strictEqual(result.speed, 0);
   assert(result.waiting, "blocked vehicle should be marked waiting");
+});
+
+runTest("intersection incident traffic changes lanes instead of remaining blocked", () => {
+  const sim = new TrafficSimulation({
+    random: deterministicRandom(),
+    config: { incident: true, incidentSeverity: "major", speedLimit: 50 }
+  });
+  sim.activateIncident(INCIDENT_MIN_DURATION_SECONDS);
+  const route = ROUTES[sim.activeIncident.direction];
+  sim.activeIncident.position = route.start + (route.end - route.start) * 0.3;
+  const vehicle = vehicleApproachingIncident(sim, 80, 12);
+  vehicle.laneChangeCooldown = 8;
+  sim.vehicles = [vehicle];
+
+  for (let index = 0; index < 30 && !vehicle.laneChanging; index += 1) {
+    sim.evaluateLaneChange(vehicle, sim.vehicles, 0.1);
+  }
+
+  assert(vehicle.laneChanging, "incident avoidance must override the normal lane-change cooldown");
+  const targetLane = sim.incidentTargetLane(sim.activeIncident);
+  assert.strictEqual(vehicle.targetLane, targetLane);
+  sim.advanceLaneChange(vehicle, vehicle.laneChange.duration + 0.1);
+  assert.strictEqual(vehicle.lane, targetLane);
+  assert.strictEqual(sim.incidentForVehicle(vehicle), null);
+});
+
+runTest("open-lane traffic yields early to an incident merge requester", () => {
+  const sim = new TrafficSimulation({
+    random: deterministicRandom(),
+    config: { mode: "highway", incident: true, incidentSeverity: "major" }
+  });
+  sim.activateIncident(INCIDENT_MIN_DURATION_SECONDS);
+  const requester = vehicleApproachingIncident(sim, 100, 10);
+  const targetLane = sim.incidentTargetLane(sim.activeIncident);
+  requester.laneChangeIntent = { targetLane, reason: "incident", decisionRemaining: 0.5 };
+  const yieldingVehicle = Object.assign({}, requester, {
+    id: requester.id + 1,
+    position: requester.position - requester.route.sign * 230,
+    lane: targetLane,
+    targetLane,
+    laneChangeIntent: null,
+    speed: 6,
+    currentSpeed: 6
+  });
+  sim.vehicles = [requester, yieldingVehicle];
+
+  const target = sim.computeTargetSpeed(yieldingVehicle, null);
+  assert(target.speed < yieldingVehicle.speed, "rear vehicle in the open lane should create a merge gap");
+});
+
+runTest("open-lane traffic passes when it is too close to yield safely", () => {
+  const sim = new TrafficSimulation({
+    random: deterministicRandom(),
+    config: { mode: "highway", incident: true, incidentSeverity: "major" }
+  });
+  sim.activateIncident(INCIDENT_MIN_DURATION_SECONDS);
+  const requester = vehicleApproachingIncident(sim, 100, 0);
+  const targetLane = sim.incidentTargetLane(sim.activeIncident);
+  requester.laneChangeIntent = { targetLane, reason: "incident", decisionRemaining: 0 };
+  const passingVehicle = Object.assign({}, requester, {
+    id: requester.id + 1,
+    position: requester.position - requester.route.sign * 45,
+    lane: targetLane,
+    targetLane,
+    laneChangeIntent: null,
+    speed: 16,
+    currentSpeed: 16
+  });
+  sim.vehicles = [requester, passingVehicle];
+
+  const target = sim.computeTargetSpeed(passingVehicle, null);
+  assert.strictEqual(target.speed, passingVehicle.speed, "a close vehicle should pass instead of stopping beside the merge requester");
+});
+
+runTest("intersection incidents are generated outside the central conflict area", () => {
+  for (const seed of ["incident-a", "incident-b", "incident-c", "incident-d"]) {
+    const sim = new TrafficSimulation({ config: { incident: true, seed } });
+    sim.activateIncident(INCIDENT_MIN_DURATION_SECONDS);
+    const incident = sim.activeIncident;
+    const route = ROUTES[incident.direction];
+    const inConflictArea = route.axis === "x"
+      ? incident.position >= ROAD_MODEL.bounds.intersection.left && incident.position <= ROAD_MODEL.bounds.intersection.right
+      : incident.position >= ROAD_MODEL.bounds.intersection.top && incident.position <= ROAD_MODEL.bounds.intersection.bottom;
+    assert.strictEqual(inConflictArea, false, `${seed} placed an incident inside the intersection`);
+  }
 });
 
 runTest("highway incident triggers a human decision delay before changing lanes", () => {

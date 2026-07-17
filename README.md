@@ -56,6 +56,12 @@ npm run check
 npm run test:e2e
 ```
 
+## License
+
+This project is released under the [MIT License](LICENSE). You may use,
+modify, distribute, and sublicense it subject to the license terms. The
+software is provided without warranty.
+
 ## 繁體中文
 
 互動式瀏覽器交通模擬器，可研究號誌時序、交通需求、速限、事故瓶頸、公車優先、高速公路車流與煞車遞延效應。
@@ -87,6 +93,8 @@ npm run test:e2e
 <https://rudinyu.github.io/traffic-simulator/>
 
 本機使用：直接用瀏覽器開啟 `index.html`。
+
+授權方式：本專案採用 [MIT License](LICENSE)。在保留著作權與授權聲明的前提下，可自由使用、修改、散布與再授權；本軟體不提供任何擔保。
 
 若要成為正式線上服務，仍需補強：
 

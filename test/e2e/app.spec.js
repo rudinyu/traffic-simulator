@@ -7,10 +7,24 @@ test("simulator renders, localizes, switches scenarios, and restores state", asy
   await expect(page.getByRole("heading", { name: "Traffic Simulation Console" })).toBeVisible();
   await expect(page.locator("#vehicleCount")).not.toHaveText("0", { timeout: 5000 });
 
-  const canvasHasTrafficPixels = await page.locator("#trafficCanvas").evaluate((canvas) => {
-    return canvas.toDataURL("image/png").length > 50000;
-  });
-  expect(canvasHasTrafficPixels).toBe(true);
+  await expect.poll(() => page.locator("#trafficCanvas").evaluate((canvas) => {
+    const pixels = canvas.getContext("2d").getImageData(0, 0, canvas.width, canvas.height).data;
+    const vehicleColors = new Set([
+      "229,231,235",
+      "249,115,22",
+      "56,189,248",
+      "3,105,161",
+      "153,27,27"
+    ]);
+    let matchingPixels = 0;
+    for (let offset = 0; offset < pixels.length; offset += 4) {
+      if (vehicleColors.has(`${pixels[offset]},${pixels[offset + 1]},${pixels[offset + 2]}`)) {
+        matchingPixels += 1;
+        if (matchingPixels > 30) return true;
+      }
+    }
+    return false;
+  }), { timeout: 5000 }).toBe(true);
 
   await page.locator("#language").selectOption("zh-TW");
   await expect(page.getByRole("heading", { name: "交通模擬控制台" })).toBeVisible();

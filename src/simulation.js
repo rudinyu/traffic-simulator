@@ -619,7 +619,11 @@
       const routeTable = this.config.mode === "highway" ? HIGHWAY_ROUTES : ROUTES;
       const route = routeTable[direction];
       const lane = Math.floor(this.incidentRandom() * LANES_PER_DIRECTION);
-      const routeFraction = randomBetween(this.incidentRandom, 0.36, 0.68);
+      const routeFraction = this.config.mode === "highway"
+        ? randomBetween(this.incidentRandom, 0.36, 0.68)
+        : (this.incidentRandom() < 0.5
+          ? randomBetween(this.incidentRandom, 0.24, 0.36)
+          : randomBetween(this.incidentRandom, 0.64, 0.76));
       this.activeIncident = {
         id: `incident-${this.incidentCount + 1}`,
         startedAt: this.time,
@@ -1203,7 +1207,7 @@
       const change = vehicle.laneChange;
       if (!change || change.aborting) return;
       const progress = clamp((change.elapsed || 0) / Math.max(change.duration || 1, 0.1), 0, 1);
-      if (this.canChangeLane(vehicle, change.targetLane, candidates)) {
+      if (this.canChangeLane(vehicle, change.targetLane, candidates, change.reason)) {
         vehicle.laneChangeEmergency = false;
         return;
       }
@@ -1237,8 +1241,15 @@
         : vehicle.speed;
     }
 
-    canChangeLane(vehicle, targetLane, candidates) {
-      if (this.config.mode !== "highway" || targetLane < 0 || targetLane >= LANES_PER_DIRECTION) return false;
+    canChangeLane(vehicle, targetLane, candidates, reason) {
+      if (targetLane < 0 || targetLane >= LANES_PER_DIRECTION) return false;
+      const changeReason = reason || vehicle.laneChange?.reason || vehicle.laneChangeIntent?.reason;
+      if (this.config.mode !== "highway") {
+        if (changeReason !== "incident" || this.vehicleInIntersection(vehicle)) return false;
+        const stopLine = STOP_LINES[vehicle.direction];
+        const distanceToStop = (stopLine - vehicle.position) * vehicle.route.sign;
+        if (Math.abs(distanceToStop) < 28) return false;
+      }
       for (const incident of this.activeRoadIncidents()) {
         if (incident.direction !== vehicle.direction || incident.lane !== targetLane) continue;
         const incidentDistance = this.distanceToIncident(vehicle, incident);
@@ -1250,18 +1261,36 @@
       const front = this.closestVehicleInLane(vehicle, laneVehicles, targetLane, true);
       const rear = this.closestVehicleInLane(vehicle, laneVehicles, targetLane, false);
       const reactionSeconds = driverReactionTimeSeconds(vehicle, this.config) + this.config.brakeBuildTime;
-      const frontClearance = Math.max(
-        LANE_CHANGE_FRONT_CLEARANCE_PX,
-        vehicle.currentSpeed * reactionSeconds * PX_PER_METER * 0.32
-      ) + (vehicle.length || 22) / 2;
-      if (front && front.distance < frontClearance + (front.vehicle.length || 22) / 2) return false;
+      const incidentMerge = changeReason === "incident";
+      if (front) {
+        const physicalClearance = minimumVehicleSeparation(front.vehicle, vehicle);
+        const frontClearance = incidentMerge
+          ? Math.max(
+            physicalClearance,
+            vehicle.currentSpeed * reactionSeconds * PX_PER_METER * 0.16 +
+              ((vehicle.length || 22) + (front.vehicle.length || 22)) / 2
+          )
+          : Math.max(
+            LANE_CHANGE_FRONT_CLEARANCE_PX,
+            vehicle.currentSpeed * reactionSeconds * PX_PER_METER * 0.32
+          ) + ((vehicle.length || 22) + (front.vehicle.length || 22)) / 2;
+        if (front.distance < frontClearance) return false;
+      }
       if (!rear) return true;
       const rearSpeed = rear.vehicle.currentSpeed || 0;
       const rearClosingSpeed = Math.max(0, rearSpeed - vehicle.currentSpeed);
-      const rearClearance = LANE_CHANGE_BACK_CLEARANCE_PX +
-        rearSpeed * reactionSeconds * PX_PER_METER * 0.24 +
-        rearClosingSpeed * reactionSeconds * PX_PER_METER * 0.35 +
-        (rear.vehicle.length || 22) / 2;
+      const physicalRearClearance = minimumVehicleSeparation(vehicle, rear.vehicle);
+      const rearClearance = incidentMerge
+        ? Math.max(
+          physicalRearClearance,
+          rearSpeed * reactionSeconds * PX_PER_METER * 0.12 +
+            rearClosingSpeed * reactionSeconds * PX_PER_METER * 0.2 +
+            ((vehicle.length || 22) + (rear.vehicle.length || 22)) / 2
+        )
+        : LANE_CHANGE_BACK_CLEARANCE_PX +
+          rearSpeed * reactionSeconds * PX_PER_METER * 0.24 +
+          rearClosingSpeed * reactionSeconds * PX_PER_METER * 0.35 +
+          (rear.vehicle.length || 22) / 2;
       return rear.distance >= rearClearance;
     }
 
@@ -1280,7 +1309,7 @@
     }
 
     evaluateLaneChange(vehicle, candidates, dt) {
-      if (this.config.mode !== "highway" || vehicle.lane === undefined) return;
+      if (vehicle.lane === undefined) return;
       if (vehicle.laneChanging) {
         this.reassessLaneChange(vehicle, candidates);
         return;
@@ -1305,13 +1334,14 @@
       let targetLane = null;
       let reason = null;
 
-      if (emergencyApproaching) {
+      if (this.config.mode === "highway" && emergencyApproaching) {
         targetLane = vehicle.lane === 0 ? 1 : 0;
         reason = "emergency-yield";
       } else if (incidentAhead) {
         targetLane = this.incidentTargetLane(incident);
         reason = "incident";
       } else if (
+        this.config.mode === "highway" &&
         vehicle.lane === 0 &&
         currentLeader &&
         currentLeader.distance < OVERTAKE_LOOKAHEAD_PX &&
@@ -1320,6 +1350,7 @@
         targetLane = 1;
         reason = "overtake";
       } else if (
+        this.config.mode === "highway" &&
         vehicle.lane === 1 &&
         vehicle.laneChangeCooldown <= 0 &&
         !incidentBlocksReturn &&
@@ -1337,8 +1368,8 @@
       vehicle.laneChangeIntent.decisionRemaining = Math.max(0, vehicle.laneChangeIntent.decisionRemaining - dt);
       if (
         vehicle.laneChangeIntent.decisionRemaining <= 0 &&
-        vehicle.laneChangeCooldown <= 0 &&
-        this.canChangeLane(vehicle, targetLane, candidates)
+        (reason === "incident" || vehicle.laneChangeCooldown <= 0) &&
+        this.canChangeLane(vehicle, targetLane, candidates, reason)
       ) {
         this.startLaneChange(vehicle, targetLane);
       }
@@ -1366,6 +1397,30 @@
             (vehicle.position - other.position) * vehicle.route.sign < OVERTAKE_LOOKAHEAD_PX;
         });
         if (emergencyBehind) target = Math.min(target, vehicle.speed * 0.62);
+      }
+      const incidentMergeRequester = this.vehicles.find((other) => {
+        if (other === vehicle || other.direction !== vehicle.direction || other.crashed) return false;
+        const intent = other.laneChangeIntent || other.laneChange;
+        if (!intent || intent.reason !== "incident" || intent.targetLane !== vehicle.lane) return false;
+        const requesterAhead = (other.position - vehicle.position) * vehicle.route.sign;
+        const reactionSeconds = driverReactionTimeSeconds(vehicle, this.config) + this.config.brakeBuildTime;
+        const maxBraking = effectiveMaxBrakingMps2(vehicle, this.config);
+        const stoppingDistance = vehicle.currentSpeed * reactionSeconds * PX_PER_METER +
+          vehicle.currentSpeed * vehicle.currentSpeed / (2 * maxBraking) * PX_PER_METER +
+          minimumVehicleSeparation(other, vehicle);
+        const canYieldBehind = requesterAhead >= stoppingDistance || (
+          vehicle.currentSpeed < WAITING_SPEED_MPS &&
+          requesterAhead >= minimumVehicleSeparation(other, vehicle)
+        );
+        return canYieldBehind && requesterAhead < Math.max(OVERTAKE_LOOKAHEAD_PX * 2.5, stoppingDistance * 1.25);
+      });
+      if (incidentMergeRequester) {
+        target = Math.min(
+          target,
+          vehicle.speed * 0.55,
+          incidentMergeRequester.currentSpeed ?? vehicle.speed * 0.4
+        );
+        waiting = waiting || target < WAITING_SPEED_MPS;
       }
 
       if (this.config.mode !== "highway") {
@@ -1464,9 +1519,8 @@
     }
 
     canChangeIncidentLane(vehicle) {
-      if (this.config.mode !== "highway") return false;
       const incident = this.incidentForVehicle(vehicle);
-      return Boolean(incident && this.canChangeLane(vehicle, this.incidentTargetLane(incident), this.vehicles));
+      return Boolean(incident && this.canChangeLane(vehicle, this.incidentTargetLane(incident), this.vehicles, "incident"));
     }
 
     detectCollisions() {
