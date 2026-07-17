@@ -789,7 +789,7 @@ runTest("open-lane traffic passes when it is too close to yield safely", () => {
   assert.strictEqual(target.speed, passingVehicle.speed, "a close vehicle should pass instead of stopping beside the merge requester");
 });
 
-runTest("intersection incidents are generated outside the central conflict area", () => {
+runTest("intersection incidents are generated upstream of the stop line", () => {
   for (const seed of ["incident-a", "incident-b", "incident-c", "incident-d"]) {
     const sim = new TrafficSimulation({ config: { incident: true, seed } });
     sim.activateIncident(INCIDENT_MIN_DURATION_SECONDS);
@@ -799,7 +799,71 @@ runTest("intersection incidents are generated outside the central conflict area"
       ? incident.position >= ROAD_MODEL.bounds.intersection.left && incident.position <= ROAD_MODEL.bounds.intersection.right
       : incident.position >= ROAD_MODEL.bounds.intersection.top && incident.position <= ROAD_MODEL.bounds.intersection.bottom;
     assert.strictEqual(inConflictArea, false, `${seed} placed an incident inside the intersection`);
+    const distanceToStopLine = (STOP_LINES[incident.direction] - incident.position) * route.sign;
+    assert(distanceToStopLine > 0, `${seed} placed an incident downstream of the stop line`);
   }
+});
+
+runTest("intersection incident seeds produce visible avoidance lane changes", () => {
+  for (const seed of ["intersection-1", "intersection-2", "intersection-9", "intersection-16"]) {
+    const sim = new TrafficSimulation({
+      config: { mode: "intersection", seed, demand: 70, incident: true, incidentSeverity: "major" }
+    });
+    sim.activateIncident(INCIDENT_MIN_DURATION_SECONDS);
+    for (let index = 0; index < 1800; index += 1) sim.step(0.08);
+    const laneChangeStarted = sim.eventLog.some((event) => (
+      event.type === "lane-change-start" && event.details.reason === "incident"
+    ));
+    assert(laneChangeStarted, `${seed} did not produce an incident avoidance lane change`);
+  }
+});
+
+runTest("intersection incident keeps its detour lane clear of existing crashes", () => {
+  const sim = new TrafficSimulation({
+    config: { mode: "intersection", seed: "blocked-detour", incident: true, incidentSeverity: "major" }
+  });
+  sim.vehicles = Object.keys(ROUTES).map((direction, index) => ({
+    id: index + 1,
+    direction,
+    lane: 1,
+    crashed: true
+  }));
+
+  sim.activateIncident(INCIDENT_MIN_DURATION_SECONDS);
+
+  assert.strictEqual(sim.activeIncident.lane, 1, "incident lane should leave lane 0 available as the detour");
+  assert.strictEqual(sim.incidentTargetLane(sim.activeIncident), 0);
+});
+
+runTest("delayed default intersection incident still produces avoidance lane changes", () => {
+  const sim = new TrafficSimulation({
+    config: {
+      mode: "intersection",
+      seed: "demo-traffic",
+      demand: 52,
+      incident: true,
+      incidentFrequency: "normal",
+      incidentSeverity: "mixed"
+    }
+  });
+  while (!sim.activeIncident && sim.time < 900) sim.step(0.08);
+  assert(sim.activeIncident, "default scenario did not generate an incident");
+  const incidentStartedAt = sim.time;
+  for (let index = 0; index < 2500; index += 1) sim.step(0.08);
+  const incidentLaneChanges = sim.eventLog.filter((event) => (
+    event.time >= incidentStartedAt &&
+    event.type === "lane-change-start" &&
+    event.details.reason === "incident"
+  ));
+  const completedVehicleIds = new Set(sim.eventLog
+    .filter((event) => event.time >= incidentStartedAt && event.type === "lane-change-complete")
+    .map((event) => event.details.vehicleId));
+
+  assert(incidentLaneChanges.length > 0, "default delayed incident did not produce an avoidance lane change");
+  assert(
+    incidentLaneChanges.some((event) => completedVehicleIds.has(event.details.vehicleId)),
+    "default delayed incident did not complete an avoidance lane change"
+  );
 });
 
 runTest("highway incident triggers a human decision delay before changing lanes", () => {

@@ -615,15 +615,39 @@
         INCIDENT_MAX_DURATION_SECONDS
       );
       const directions = this.activeDirections();
-      const direction = directions[Math.floor(this.incidentRandom() * directions.length)];
+      const laneClosure = this.configuredLaneClosure();
+      const placementCandidates = [];
+      for (const candidateDirection of directions) {
+        for (let sourceLane = 0; sourceLane < LANES_PER_DIRECTION; sourceLane += 1) {
+          const targetLane = sourceLane === 0 ? 1 : 0;
+          const targetBlockedByCrash = this.vehicles.some((vehicle) => (
+            vehicle.crashed &&
+            vehicle.direction === candidateDirection &&
+            activeVehicleLanes(vehicle).includes(targetLane)
+          ));
+          const targetBlockedByClosure = Boolean(
+            laneClosure &&
+            laneClosure.direction === candidateDirection &&
+            laneClosure.lane === targetLane
+          );
+          if (!targetBlockedByCrash && !targetBlockedByClosure) {
+            placementCandidates.push({ direction: candidateDirection, lane: sourceLane });
+          }
+        }
+      }
+      const placement = placementCandidates.length > 0
+        ? placementCandidates[Math.floor(this.incidentRandom() * placementCandidates.length)]
+        : {
+          direction: directions[Math.floor(this.incidentRandom() * directions.length)],
+          lane: Math.floor(this.incidentRandom() * LANES_PER_DIRECTION)
+        };
+      const direction = placement.direction;
       const routeTable = this.config.mode === "highway" ? HIGHWAY_ROUTES : ROUTES;
       const route = routeTable[direction];
-      const lane = Math.floor(this.incidentRandom() * LANES_PER_DIRECTION);
+      const lane = placement.lane;
       const routeFraction = this.config.mode === "highway"
         ? randomBetween(this.incidentRandom, 0.36, 0.68)
-        : (this.incidentRandom() < 0.5
-          ? randomBetween(this.incidentRandom, 0.24, 0.36)
-          : randomBetween(this.incidentRandom, 0.64, 0.76));
+        : randomBetween(this.incidentRandom, 0.24, 0.36);
       this.activeIncident = {
         id: `incident-${this.incidentCount + 1}`,
         startedAt: this.time,
