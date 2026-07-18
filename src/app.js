@@ -19,8 +19,8 @@
       noteBraking: "Highway braking delay combines reaction time with brake build-up time before deceleration begins.", notePhysics: "Wet and icy roads reduce friction, lengthen stopping distance, and increase following gaps.", highwayLabel: "HIGHWAY",
       brakingExperiment: "Delayed braking experiment", incident: "Incident", startupTitle: "Traffic simulation failed to start",
       startupDetail: "Make sure the required files loaded, then refresh the page.", loopError: "The simulation hit an error. Press Reset or refresh the page.",
-      incidentStatus: "Incident Status", incidentOff: "Off", incidentScheduled: "Starts in {minutes} min", incidentClearing: "Clears in {minutes} min",
-      status: "Average speed {speed} km/h, vehicles in network {vehicles}, queue length {queue}, completed trips {trips}", unitKmh: "km/h", unitSec: "sec"
+      incidentStatus: "Incident Status", incidentOff: "Off", incidentScheduled: "Starts in {time}", incidentClearing: "Clears in {time}",
+      status: "Average speed {speed} km/h, vehicles in network {vehicles}, queue length {queue}, completed trips {trips}", unitKmh: "km/h", unitMin: "min", unitSec: "sec"
     },
     "zh-TW": {
       title: "交通模擬控制台", subtitle: "比較路口車流、高速公路車流與煞車遞延效應。", language: "語言", simulationSpeed: "模擬速度", pause: "暫停", resume: "繼續", reset: "重設", metrics: "即時指標",
@@ -35,8 +35,8 @@
       noteBus: "公車接近路口時，公車優先會延長綠燈時間。", noteBraking: "高速公路煞車遞延由反應時間與煞車建立時間共同決定。",
       notePhysics: "濕滑與結冰路面會降低摩擦、拉長煞停距離並增加跟車距離。",
       highwayLabel: "高速公路", brakingExperiment: "煞車遞延實驗", incident: "事故", startupTitle: "交通模擬啟動失敗",
-      startupDetail: "請確認必要檔案已載入，然後重新整理頁面。", loopError: "模擬發生錯誤，請按重設或重新整理頁面。", incidentStatus: "事故狀態", incidentOff: "關閉", incidentScheduled: "{minutes} 分鐘後發生", incidentClearing: "{minutes} 分鐘後解除",
-      status: "平均速度 {speed} 公里/小時，網路車輛 {vehicles}，排隊長度 {queue}，完成旅次 {trips}", unitKmh: "公里/小時", unitSec: "秒"
+      startupDetail: "請確認必要檔案已載入，然後重新整理頁面。", loopError: "模擬發生錯誤，請按重設或重新整理頁面。", incidentStatus: "事故狀態", incidentOff: "關閉", incidentScheduled: "{time}後發生", incidentClearing: "{time}後解除",
+      status: "平均速度 {speed} 公里/小時，網路車輛 {vehicles}，排隊長度 {queue}，完成旅次 {trips}", unitKmh: "公里/小時", unitMin: "分", unitSec: "秒"
     }
   };
   let language = localStorage.getItem("traffic-simulator-language") || "en";
@@ -777,6 +777,15 @@
     }
   }
 
+  function formatIncidentCountdown(seconds) {
+    const totalSeconds = Math.max(0, Math.ceil(Number(seconds) || 0));
+    const minutes = Math.floor(totalSeconds / 60);
+    const remainingSeconds = totalSeconds % 60;
+    if (minutes === 0) return `${remainingSeconds} ${t("unitSec")}`;
+    if (remainingSeconds === 0) return `${minutes} ${t("unitMin")}`;
+    return `${minutes} ${t("unitMin")} ${remainingSeconds} ${t("unitSec")}`;
+  }
+
   function updateMetrics(data) {
     metrics.avgSpeed.textContent = `${data.averageSpeedKmh} ${t("unitKmh")}`;
     metrics.vehicleCount.textContent = String(data.vehicleCount);
@@ -787,13 +796,13 @@
     metrics.completedTrips.textContent = String(data.completedTrips);
     if (data.incidentActive) {
       metrics.incidentStatus.textContent = t("incidentClearing").replace(
-        "{minutes}",
-        Math.max(1, Math.ceil(data.incidentRemainingSeconds / 60))
+        "{time}",
+        formatIncidentCountdown(data.incidentRemainingSeconds)
       );
     } else if (data.nextIncidentSeconds !== null) {
       metrics.incidentStatus.textContent = t("incidentScheduled").replace(
-        "{minutes}",
-        Math.max(1, Math.ceil(data.nextIncidentSeconds / 60))
+        "{time}",
+        formatIncidentCountdown(data.nextIncidentSeconds)
       );
     } else {
       metrics.incidentStatus.textContent = t("incidentOff");

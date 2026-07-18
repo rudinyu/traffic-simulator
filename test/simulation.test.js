@@ -86,6 +86,33 @@ runTest("random incident timing is reproducible for the same seed", () => {
   assert(first.nextIncidentAt >= 5 * 60 && first.nextIncidentAt <= 15 * 60);
 });
 
+runTest("changing incident frequency immediately reschedules a pending incident", () => {
+  const sim = new TrafficSimulation({
+    config: { incident: true, incidentFrequency: "normal", seed: "frequency-change" }
+  });
+  const originalIncidentAt = sim.nextIncidentAt;
+  sim.time = 30;
+
+  sim.setConfig({ incidentFrequency: "high" });
+
+  const remainingSeconds = sim.nextIncidentAt - sim.time;
+  assert.notStrictEqual(sim.nextIncidentAt, originalIncidentAt);
+  assert(remainingSeconds >= 2 * 60 && remainingSeconds <= 5 * 60);
+});
+
+runTest("changing incident frequency does not alter an active incident", () => {
+  const sim = new TrafficSimulation({
+    config: { incident: true, incidentFrequency: "normal", seed: "active-frequency-change" }
+  });
+  sim.activateIncident(INCIDENT_MIN_DURATION_SECONDS);
+  const clearsAt = sim.activeIncident.clearsAt;
+
+  sim.setConfig({ incidentFrequency: "high" });
+
+  assert.strictEqual(sim.activeIncident.clearsAt, clearsAt);
+  assert.strictEqual(sim.nextIncidentAt, null);
+});
+
 runTest("random incidents last 30 to 120 simulated minutes and clear automatically", () => {
   const sim = new TrafficSimulation({ config: { incident: true, seed: "incident-duration" } });
   sim.nextIncidentAt = 0;

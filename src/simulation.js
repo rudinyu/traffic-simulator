@@ -774,6 +774,7 @@
       const previousMode = this.config.mode;
       const previousSeed = this.config.seed;
       const previousIncidentEnabled = this.config.incident;
+      const previousIncidentFrequency = this.config.incidentFrequency;
       const validated = {};
       for (const key of ["mode", "demand", "speedLimit", "signalCycle", "greenSplit", "incident", "busPriority", "roadCondition", "reactionTime", "brakeBuildTime", "incidentFrequency", "incidentSeverity", "turningTraffic", "rampMerge", "laneClosure", "emergencyVehicles", "pedestrianPhase", "seed"]) {
         if (Object.prototype.hasOwnProperty.call(source, key)) {
@@ -829,6 +830,8 @@
       this.config = Object.assign({}, this.config, validated);
       const seedChanged = validated.seed !== undefined && validated.seed !== previousSeed;
       const modeChanged = validated.mode !== undefined && validated.mode !== previousMode;
+      const incidentFrequencyChanged = validated.incidentFrequency !== undefined &&
+        validated.incidentFrequency !== previousIncidentFrequency;
       if (!this.externalRandom && (seedChanged || modeChanged)) {
         this.random = createSeededRandom(this.config.seed);
         this.incidentRandom = createSeededRandom(`${this.config.seed}:incidents`);
@@ -838,6 +841,8 @@
       }
       if (modeChanged || seedChanged || this.config.incident !== previousIncidentEnabled) {
         this.resetIncidentState();
+      } else if (incidentFrequencyChanged && this.config.incident && !this.activeIncident) {
+        this.scheduleNextIncident(this.incidentCount === 0);
       }
       for (const vehicle of this.vehicles) {
         vehicle.speed = (this.config.speedLimit / 3.6) * vehicle.speedRatio;

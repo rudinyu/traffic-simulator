@@ -6,6 +6,11 @@ test("simulator renders, localizes, switches scenarios, and restores state", asy
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "Traffic Simulation Console" })).toBeVisible();
   await expect(page.locator("#vehicleCount")).not.toHaveText("0", { timeout: 5000 });
+  await expect(page.locator("#incidentStatus")).toContainText("min");
+  await expect(page.locator("#incidentStatus")).toContainText("sec");
+  const scheduledBeforeFrequencyChange = await page.locator("#incidentStatus").innerText();
+  await page.locator("#incidentFrequency").selectOption("high");
+  await expect(page.locator("#incidentStatus")).not.toHaveText(scheduledBeforeFrequencyChange);
 
   await expect.poll(() => page.locator("#trafficCanvas").evaluate((canvas) => {
     const pixels = canvas.getContext("2d").getImageData(0, 0, canvas.width, canvas.height).data;
