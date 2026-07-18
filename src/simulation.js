@@ -64,6 +64,7 @@
   const LANE_CHANGE_MIN_COOLDOWN_SECONDS = 4;
   const LANE_CHANGE_MAX_COOLDOWN_SECONDS = 9;
   const OVERTAKE_LOOKAHEAD_PX = 230;
+  const INTERSECTION_QUEUE_INCIDENT_LOOKAHEAD_PX = 520;
   const OVERTAKE_SPEED_ADVANTAGE_MPS = 1.5;
   const RED_LIGHT_LOOKAHEAD_PX = 95;
   const RED_LIGHT_STOP_BUFFER_PX = 12;
@@ -1344,8 +1345,11 @@
       const incident = this.incidentForVehicle(vehicle);
       const incidentDistance = incident ? this.distanceToIncident(vehicle, incident) : -1;
       const maxBraking = effectiveMaxBrakingMps2(vehicle, this.config);
+      const queueIncidentLookahead = this.config.mode !== "highway" && vehicle.currentSpeed < WAITING_SPEED_MPS
+        ? INTERSECTION_QUEUE_INCIDENT_LOOKAHEAD_PX
+        : OVERTAKE_LOOKAHEAD_PX;
       const incidentRecognitionDistance = Math.max(
-        OVERTAKE_LOOKAHEAD_PX,
+        queueIncidentLookahead,
         vehicle.currentSpeed * (driverReactionTimeSeconds(vehicle, this.config) + this.config.brakeBuildTime) * PX_PER_METER +
           vehicle.currentSpeed * vehicle.currentSpeed / (2 * maxBraking) * PX_PER_METER
       );
@@ -1422,10 +1426,12 @@
         });
         if (emergencyBehind) target = Math.min(target, vehicle.speed * 0.62);
       }
-      const incidentMergeRequester = this.vehicles.find((other) => {
-        if (other === vehicle || other.direction !== vehicle.direction || other.crashed) return false;
+      let incidentMergeRequester = null;
+      let incidentMergeRequesterDistance = Infinity;
+      for (const other of this.vehicles) {
+        if (other === vehicle || other.direction !== vehicle.direction || other.crashed) continue;
         const intent = other.laneChangeIntent || other.laneChange;
-        if (!intent || intent.reason !== "incident" || intent.targetLane !== vehicle.lane) return false;
+        if (!intent || intent.reason !== "incident" || intent.targetLane !== vehicle.lane) continue;
         const requesterAhead = (other.position - vehicle.position) * vehicle.route.sign;
         const reactionSeconds = driverReactionTimeSeconds(vehicle, this.config) + this.config.brakeBuildTime;
         const maxBraking = effectiveMaxBrakingMps2(vehicle, this.config);
@@ -1436,8 +1442,15 @@
           vehicle.currentSpeed < WAITING_SPEED_MPS &&
           requesterAhead >= minimumVehicleSeparation(other, vehicle)
         );
-        return canYieldBehind && requesterAhead < Math.max(OVERTAKE_LOOKAHEAD_PX * 2.5, stoppingDistance * 1.25);
-      });
+        if (
+          canYieldBehind &&
+          requesterAhead < Math.max(OVERTAKE_LOOKAHEAD_PX * 2.5, stoppingDistance * 1.25) &&
+          requesterAhead < incidentMergeRequesterDistance
+        ) {
+          incidentMergeRequester = other;
+          incidentMergeRequesterDistance = requesterAhead;
+        }
+      }
       if (incidentMergeRequester) {
         target = Math.min(
           target,

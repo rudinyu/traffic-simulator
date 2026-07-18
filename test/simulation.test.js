@@ -741,6 +741,25 @@ runTest("intersection incident traffic changes lanes instead of remaining blocke
   assert.strictEqual(sim.incidentForVehicle(vehicle), null);
 });
 
+runTest("queued intersection traffic recognizes an incident before reaching the queue front", () => {
+  const sim = new TrafficSimulation({
+    random: deterministicRandom(),
+    config: { incident: true, incidentSeverity: "major", speedLimit: 50 }
+  });
+  sim.activateIncident(INCIDENT_MIN_DURATION_SECONDS);
+  const route = ROUTES[sim.activeIncident.direction];
+  sim.activeIncident.position = route.start + (route.end - route.start) * 0.3;
+  const queuedVehicle = vehicleApproachingIncident(sim, 400, 0);
+  sim.vehicles = [queuedVehicle];
+
+  for (let index = 0; index < 30 && !queuedVehicle.laneChanging; index += 1) {
+    sim.evaluateLaneChange(queuedVehicle, sim.vehicles, 0.1);
+  }
+
+  assert(queuedVehicle.laneChanging, "queued vehicle should begin avoiding the incident before reaching the queue front");
+  assert.strictEqual(queuedVehicle.laneChange.reason, "incident");
+});
+
 runTest("open-lane traffic yields early to an incident merge requester", () => {
   const sim = new TrafficSimulation({
     random: deterministicRandom(),
@@ -763,6 +782,37 @@ runTest("open-lane traffic yields early to an incident merge requester", () => {
 
   const target = sim.computeTargetSpeed(yieldingVehicle, null);
   assert(target.speed < yieldingVehicle.speed, "rear vehicle in the open lane should create a merge gap");
+});
+
+runTest("open-lane traffic yields to the nearest safe incident merge requester", () => {
+  const sim = new TrafficSimulation({
+    random: deterministicRandom(),
+    config: { mode: "highway", incident: true, incidentSeverity: "major" }
+  });
+  sim.activateIncident(INCIDENT_MIN_DURATION_SECONDS);
+  const farRequester = vehicleApproachingIncident(sim, 100, 0);
+  const targetLane = sim.incidentTargetLane(sim.activeIncident);
+  farRequester.laneChangeIntent = { targetLane, reason: "incident", decisionRemaining: 0 };
+  const yieldingVehicle = Object.assign({}, farRequester, {
+    id: farRequester.id + 2,
+    position: farRequester.position - farRequester.route.sign * 400,
+    lane: targetLane,
+    targetLane,
+    laneChangeIntent: null,
+    speed: 6,
+    currentSpeed: 6
+  });
+  const nearRequester = Object.assign({}, farRequester, {
+    id: farRequester.id + 1,
+    position: yieldingVehicle.position + farRequester.route.sign * 230,
+    speed: 3,
+    currentSpeed: 3
+  });
+  sim.vehicles = [farRequester, nearRequester, yieldingVehicle];
+
+  const target = sim.computeTargetSpeed(yieldingVehicle, null);
+  assert(target.speed > 0, "nearest requester should take priority over a farther stopped requester");
+  assert(target.speed < yieldingVehicle.speed, "open-lane vehicle should still slow to create the merge gap");
 });
 
 runTest("open-lane traffic passes when it is too close to yield safely", () => {
