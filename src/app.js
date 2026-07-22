@@ -10,12 +10,12 @@
       trafficDemand: "Traffic Demand", speedLimit: "Speed Limit", roadCondition: "Road Condition", dryRoad: "Dry", wetRoad: "Wet", icyRoad: "Icy", signalCycle: "Signal Cycle", greenSplit: "Green Split",
       reactionTime: "Driver Reaction Time", brakeBuildTime: "Brake Build-up Time", incidentBottleneck: "Enable Random Incidents", busPriority: "Bus Signal Priority",
       incidentFrequency: "Incident Frequency", frequencyLow: "Low", frequencyNormal: "Normal", frequencyHigh: "High", incidentSeverity: "Incident Severity", severityMixed: "Mixed", severityMinor: "Minor", severityMajor: "Major",
-      advancedScenarios: "Advanced Scenarios", turningTraffic: "Turning Traffic", rampMerge: "Highway Ramp Merge", laneClosure: "Lane Closure", emergencyVehicles: "Emergency Vehicles", pedestrianPhase: "Pedestrian Phase",
+      advancedScenarios: "Advanced Scenarios", turningTraffic: "Turning Traffic", rampMerge: "Highway Ramp Merge", laneClosure: "Lane Closure", emergencyVehicles: "Emergency Vehicles", pedestrianPhase: "Pedestrian Phase", redLightRunning: "Red-light Violations",
       scenarioSeed: "Scenario Seed", seedRestartHint: "Changing the seed restarts the scenario.", exportScenario: "Export JSON", importScenario: "Import JSON", exportCsv: "Export CSV", captureBaseline: "Set Baseline", scenarioJson: "Scenario JSON Snapshot", scenarioPlaceholder: "Paste scenario JSON here or export the current state.",
       importSuccess: "Scenario restored exactly.", importError: "The scenario JSON is invalid.", baselineSaved: "Baseline saved", baselineEmpty: "Set a baseline to compare the current run.", analysis: "Analysis", recentEvents: "Recent Events", noEvents: "No events yet", roadWork: "Work zone", pedestrianActive: "Pedestrian crossing active",
-      comparison: "Speed {speed}, queue {queue}, trips {trips} versus baseline", eventIncidentStart: "Incident started", eventIncidentClear: "Incident cleared", eventCollision: "Collision", eventCollisionClear: "Collision cleared", eventLaneChange: "Lane change", eventRampEntry: "Ramp entry", eventRampMerge: "Ramp merge",
+      comparison: "Speed {speed}, queue {queue}, trips {trips} versus baseline", eventIncidentStart: "Incident started", eventIncidentClear: "Incident cleared", eventCollision: "Collision", eventCollisionClear: "Collision cleared", eventLaneChange: "Lane change", eventRampEntry: "Ramp entry", eventRampMerge: "Ramp merge", eventRedLightRun: "Red-light violation",
       whatToWatch: "What to Watch", noteCongestion: "Red road segments show congestion, while yellow segments show lower speeds.",
-      noteIncident: "Seeded incidents appear at random times and clear automatically after 30–120 simulated minutes.", noteBus: "Bus priority extends the green phase when a bus approaches the intersection.",
+      noteIncident: "Seeded incidents use moving traffic; optional red-light violations can create conflicts during signal changes.", noteBus: "Bus priority extends the green phase when a bus approaches the intersection.",
       noteBraking: "Highway braking delay combines reaction time with brake build-up time before deceleration begins.", notePhysics: "Wet and icy roads reduce friction, lengthen stopping distance, and increase following gaps.", highwayLabel: "HIGHWAY",
       brakingExperiment: "Delayed braking experiment", incident: "Incident", startupTitle: "Traffic simulation failed to start",
       startupDetail: "Make sure the required files loaded, then refresh the page.", loopError: "The simulation hit an error. Press Reset or refresh the page.",
@@ -28,10 +28,10 @@
       roadwayMode: "道路模式", intersection: "路口", highway: "高速公路", signalStatus: "號誌狀態", ewGreen: "東西向綠燈", nsGreen: "南北向綠燈", allRed: "全紅清空", trafficDemand: "交通需求", speedLimit: "速限", roadCondition: "路面狀態", dryRoad: "乾燥", wetRoad: "濕滑", icyRoad: "結冰", signalCycle: "號誌週期", greenSplit: "綠燈比例",
       reactionTime: "駕駛反應時間", brakeBuildTime: "煞車建立時間", incidentBottleneck: "啟用隨機事故", busPriority: "公車號誌優先",
       incidentFrequency: "事故頻率", frequencyLow: "低", frequencyNormal: "一般", frequencyHigh: "高", incidentSeverity: "事故嚴重度", severityMixed: "混合", severityMinor: "輕微", severityMajor: "重大",
-      advancedScenarios: "進階情境", turningTraffic: "轉向車流", rampMerge: "高速公路匝道匯入", laneClosure: "車道施工封閉", emergencyVehicles: "緊急車輛", pedestrianPhase: "行人專用時相",
-      scenarioSeed: "情境 Seed", seedRestartHint: "變更 seed 會重新開始情境。", exportScenario: "匯出 JSON", importScenario: "匯入 JSON", exportCsv: "匯出 CSV", captureBaseline: "設定基準", scenarioJson: "情境 JSON 快照", scenarioPlaceholder: "可貼上情境 JSON，或匯出目前狀態。", importSuccess: "已精確還原情境。", importError: "情境 JSON 格式無效。", baselineSaved: "已儲存基準", baselineEmpty: "設定基準後可比較目前模擬。", analysis: "分析", recentEvents: "最近事件", noEvents: "尚無事件", roadWork: "施工", pedestrianActive: "行人通行中", comparison: "相較基準：速度 {speed}、排隊 {queue}、旅次 {trips}", eventIncidentStart: "事故發生", eventIncidentClear: "事故解除", eventCollision: "碰撞", eventCollisionClear: "碰撞排除", eventLaneChange: "換道", eventRampEntry: "匝道進入", eventRampMerge: "匝道匯入",
+      advancedScenarios: "進階情境", turningTraffic: "轉向車流", rampMerge: "高速公路匝道匯入", laneClosure: "車道施工封閉", emergencyVehicles: "緊急車輛", pedestrianPhase: "行人專用時相", redLightRunning: "闖紅燈違規",
+      scenarioSeed: "情境 Seed", seedRestartHint: "變更 seed 會重新開始情境。", exportScenario: "匯出 JSON", importScenario: "匯入 JSON", exportCsv: "匯出 CSV", captureBaseline: "設定基準", scenarioJson: "情境 JSON 快照", scenarioPlaceholder: "可貼上情境 JSON，或匯出目前狀態。", importSuccess: "已精確還原情境。", importError: "情境 JSON 格式無效。", baselineSaved: "已儲存基準", baselineEmpty: "設定基準後可比較目前模擬。", analysis: "分析", recentEvents: "最近事件", noEvents: "尚無事件", roadWork: "施工", pedestrianActive: "行人通行中", comparison: "相較基準：速度 {speed}、排隊 {queue}、旅次 {trips}", eventIncidentStart: "事故發生", eventIncidentClear: "事故解除", eventCollision: "碰撞", eventCollisionClear: "碰撞排除", eventLaneChange: "換道", eventRampEntry: "匝道進入", eventRampMerge: "匝道匯入", eventRedLightRun: "闖紅燈違規",
       whatToWatch: "觀察重點",
-      noteCongestion: "紅色路段代表壅塞，黃色路段代表速度較低。", noteIncident: "事故依 Seed 隨機出現，並在模擬時間 30–120 分鐘後自動解除。",
+      noteCongestion: "紅色路段代表壅塞，黃色路段代表速度較低。", noteIncident: "事故由移動車流觸發；可選的闖紅燈違規會在號誌切換時形成衝突。",
       noteBus: "公車接近路口時，公車優先會延長綠燈時間。", noteBraking: "高速公路煞車遞延由反應時間與煞車建立時間共同決定。",
       notePhysics: "濕滑與結冰路面會降低摩擦、拉長煞停距離並增加跟車距離。",
       highwayLabel: "高速公路", brakingExperiment: "煞車遞延實驗", incident: "事故", startupTitle: "交通模擬啟動失敗",
@@ -138,6 +138,7 @@
     laneClosure: requireElement("laneClosure"),
     emergencyVehicles: requireElement("emergencyVehicles"),
     pedestrianPhase: requireElement("pedestrianPhase"),
+    redLightRunning: requireElement("redLightRunning"),
     reactionTime: requireElement("reactionTime"),
     brakeBuildTime: requireElement("brakeBuildTime")
   };
@@ -234,6 +235,7 @@
       laneClosure: controls.laneClosure.checked,
       emergencyVehicles: controls.emergencyVehicles.checked,
       pedestrianPhase: controls.pedestrianPhase.checked,
+      redLightRunning: controls.redLightRunning.checked,
       reactionTime: Number(controls.reactionTime.value),
       brakeBuildTime: Number(controls.brakeBuildTime.value),
       seed: committedSeed
@@ -253,6 +255,7 @@
     controls.rampMerge.disabled = !highwayMode;
     controls.turningTraffic.disabled = highwayMode;
     controls.pedestrianPhase.disabled = highwayMode;
+    controls.redLightRunning.disabled = highwayMode;
     controls.busPriority.disabled = highwayMode;
     controls.incidentFrequency.disabled = !controls.incident.checked;
     controls.incidentSeverity.disabled = !controls.incident.checked;
@@ -587,6 +590,7 @@
     for (const vehicle of snapshot.vehicles) {
       context.save();
       context.translate(vehicle.x, vehicle.y);
+      const redLightViolation = Number(vehicle.redLightViolationUntil) > snapshot.time;
       const angle = directionAngles[vehicle.headingDirection || vehicle.direction];
       if (angle === undefined) {
         throw new Error(`Unknown vehicle direction: ${vehicle.direction}`);
@@ -594,12 +598,14 @@
       context.rotate(angle);
       context.fillStyle = vehicle.crashed
         ? "#991b1b"
+        : (redLightViolation
+          ? "#facc15"
         : (vehicle.isEmergency
           ? "#f8fafc"
         : (vehicle.braking
           ? "#f97316"
-          : (vehicle.isBus ? (vehicle.waiting ? "#0369a1" : "#38bdf8") : (vehicle.waiting ? "#f97316" : "#e5e7eb"))));
-      context.strokeStyle = vehicle.isBus ? "#075985" : "#334155";
+          : (vehicle.isBus ? (vehicle.waiting ? "#0369a1" : "#38bdf8") : (vehicle.waiting ? "#f97316" : "#e5e7eb")))));
+      context.strokeStyle = redLightViolation ? "#dc2626" : (vehicle.isBus ? "#075985" : "#334155");
       context.lineWidth = 2;
       context.beginPath();
       roundRect(context, -vehicle.length / 2, -10, vehicle.length, 20, 5);
@@ -715,6 +721,7 @@
     if (event.type.startsWith("lane-change")) return t("eventLaneChange");
     if (event.type === "ramp-entry") return t("eventRampEntry");
     if (event.type === "ramp-merge") return t("eventRampMerge");
+    if (event.type === "red-light-run") return t("eventRedLightRun");
     return event.type;
   }
 

@@ -53,6 +53,53 @@ function vehicleApproachingIncident(sim, distance, speed) {
   };
 }
 
+function incidentTriggerVehicle(id, direction, lane, position, currentSpeed, waiting) {
+  return {
+    id,
+    direction,
+    route: Object.assign({}, ROUTES[direction]),
+    lane,
+    targetLane: lane,
+    position,
+    currentSpeed,
+    waiting: Boolean(waiting),
+    crashed: false,
+    laneChanging: false
+  };
+}
+
+function redLightRunnerVehicle(id, direction, lane, position, risk) {
+  const route = Object.assign({}, ROUTES[direction]);
+  return {
+    id,
+    direction,
+    headingDirection: direction,
+    route,
+    lane,
+    targetLane: lane,
+    position,
+    previousPosition: position,
+    progress: Math.abs(position - route.start),
+    x: route.axis === "x" ? position : route.fixed,
+    y: route.axis === "y" ? position : route.fixed,
+    laneOffset: 0,
+    speed: 12,
+    currentSpeed: 0,
+    length: 45,
+    width: 20,
+    waiting: true,
+    braking: false,
+    brakeDelayRemaining: 0,
+    brakeTargetSpeed: 0,
+    crashed: false,
+    isBus: false,
+    isEmergency: false,
+    redLightRisk: risk,
+    redLightViolationUntil: 0,
+    driver: { type: "assertive", reactionScale: 0.86 }
+  };
+}
+
 const failures = [];
 
 function runTest(name, fn) {
@@ -115,15 +162,61 @@ runTest("changing incident frequency does not alter an active incident", () => {
 
 runTest("random incidents last 30 to 120 simulated minutes and clear automatically", () => {
   const sim = new TrafficSimulation({ config: { incident: true, seed: "incident-duration" } });
-  sim.nextIncidentAt = 0;
-  sim.step(MAX_STEP_SECONDS);
+  sim.time = 5;
+  sim.lastSignal = { ew: "green", ns: "red" };
+  sim.vehicles = [incidentTriggerVehicle(101, "east", 0, 300, 10, false)];
+  sim.nextIncidentAt = sim.time;
+  sim.updateIncidentState();
   assert(sim.activeIncident, "scheduled incident should activate");
+  assert.strictEqual(sim.activeIncident.triggerVehicleId, 101);
   assert(sim.activeIncident.durationSeconds >= INCIDENT_MIN_DURATION_SECONDS);
   assert(sim.activeIncident.durationSeconds <= INCIDENT_MAX_DURATION_SECONDS);
   sim.time = sim.activeIncident.clearsAt;
   sim.updateIncidentState();
   assert.strictEqual(sim.activeIncident, null, "incident should clear at the scheduled handling time");
   assert(sim.nextIncidentAt > sim.time, "a cleared incident should schedule a future event");
+});
+
+runTest("intersection incidents use moving traffic from the green approach", () => {
+  const sim = new TrafficSimulation({
+    random: deterministicRandom(),
+    config: { incident: true, signalCycle: 40, greenSplit: 50 }
+  });
+  sim.time = 25;
+  sim.lastSignal = { ew: "red", ns: "green" };
+  sim.vehicles = [
+    incidentTriggerVehicle(201, "east", 0, 300, 0, true),
+    incidentTriggerVehicle(202, "south", 1, 180, 9, false)
+  ];
+  sim.nextIncidentAt = sim.time;
+
+  sim.updateIncidentState();
+
+  assert(sim.activeIncident);
+  assert.strictEqual(sim.activeIncident.direction, "south");
+  assert.strictEqual(sim.activeIncident.lane, 1);
+  assert.strictEqual(sim.activeIncident.position, 250);
+  assert.strictEqual(sim.activeIncident.triggerVehicleId, 202);
+});
+
+runTest("scheduled incidents wait when only red-light or stopped traffic is available", () => {
+  const sim = new TrafficSimulation({
+    random: deterministicRandom(),
+    config: { incident: true, signalCycle: 40, greenSplit: 50 }
+  });
+  sim.time = 25;
+  sim.lastSignal = { ew: "red", ns: "green" };
+  sim.vehicles = [
+    incidentTriggerVehicle(301, "east", 0, 300, 10, false),
+    incidentTriggerVehicle(302, "south", 1, 180, 0, true)
+  ];
+  sim.nextIncidentAt = sim.time;
+
+  sim.updateIncidentState();
+
+  assert.strictEqual(sim.activeIncident, null);
+  assert.strictEqual(sim.nextIncidentAt, sim.time + 1);
+  assert.strictEqual(sim.incidentCount, 0);
 });
 
 runTest("disabled random incidents remain inactive", () => {
@@ -147,6 +240,90 @@ runTest("signal alternates between east-west and north-south", () => {
   assert.strictEqual(signalState(5, config, null).ew, "green");
   assert.strictEqual(signalState(25, config, null).ew, "red");
   assert.strictEqual(signalState(25, config, null).ns, "green");
+});
+
+runTest("signal changes can trigger a reproducible red-light violation", () => {
+  const sim = new TrafficSimulation({
+    random: deterministicRandom(),
+    config: { signalCycle: 40, greenSplit: 50, busPriority: false, redLightRunning: true }
+  });
+  const vehicle = redLightRunnerVehicle(401, "east", 0, STOP_LINES.east - 35, 1);
+  sim.time = 22;
+  sim.lastSignal = { ew: "red", ns: "red" };
+  sim.lastGreenSignal = "ew";
+  sim.vehicles = [vehicle];
+
+  const signal = sim.refreshSignal(null);
+
+  assert.strictEqual(signal.ns, "green");
+  assert(vehicle.redLightViolationUntil > sim.time);
+  assert.strictEqual(vehicle.waiting, false);
+  assert.strictEqual(sim.eventLog.at(-1).type, "red-light-run");
+  assert.strictEqual(sim.eventLog.at(-1).details.conflictingGreenSignal, "ns");
+  const target = sim.computeTargetSpeed(vehicle, null);
+  assert.strictEqual(target.speed, vehicle.speed, "active violator should not brake for its red signal");
+  const previousPosition = vehicle.position;
+  vehicle.position = STOP_LINES.east + 5;
+  sim.enforceRedLightBoundary(vehicle, previousPosition);
+  assert.strictEqual(vehicle.position, STOP_LINES.east + 5, "active violator should cross the stop line");
+});
+
+runTest("active red-light violators do not extend the legal all-red clearance", () => {
+  const sim = new TrafficSimulation({
+    random: deterministicRandom(),
+    config: { signalCycle: 40, greenSplit: 50, busPriority: false, redLightRunning: true }
+  });
+  const vehicle = redLightRunnerVehicle(402, "east", 0, 560, 1);
+  vehicle.x = 560;
+  vehicle.y = 330;
+  vehicle.redLightViolationUntil = 30;
+  sim.time = 25;
+  sim.lastGreenSignal = "ns";
+  sim.vehicles = [vehicle];
+
+  const signal = sim.refreshSignal(null);
+
+  assert.strictEqual(signal.ew, "red");
+  assert.strictEqual(signal.ns, "green");
+});
+
+runTest("disabled red-light violations keep risky drivers stopped", () => {
+  const sim = new TrafficSimulation({
+    random: deterministicRandom(),
+    config: { signalCycle: 40, greenSplit: 50, busPriority: false, redLightRunning: false }
+  });
+  const vehicle = redLightRunnerVehicle(403, "east", 0, STOP_LINES.east - 35, 1);
+  sim.time = 22;
+  sim.lastSignal = { ew: "red", ns: "red" };
+  sim.lastGreenSignal = "ew";
+  sim.vehicles = [vehicle];
+
+  sim.refreshSignal(null);
+
+  assert.strictEqual(vehicle.redLightViolationUntil, 0);
+  assert.strictEqual(sim.eventLog.some((event) => event.type === "red-light-run"), false);
+});
+
+runTest("seeded red-light violations can collide with conflicting green traffic", () => {
+  const sim = new TrafficSimulation({
+    config: {
+      seed: "red-run-1",
+      demand: 70,
+      incident: false,
+      busPriority: false,
+      redLightRunning: true
+    }
+  });
+  while (sim.time < 90) sim.step(0.08);
+  const violation = sim.eventLog.find((event) => event.type === "red-light-run");
+  assert(violation, "expected the seeded scenario to produce a red-light violation");
+  const relatedCollision = sim.eventLog.find((event) => (
+    event.type === "collision" &&
+    event.time >= violation.time &&
+    event.details.vehicleIds.includes(violation.details.vehicleId)
+  ));
+  assert(relatedCollision, "expected the violating vehicle to collide with conflicting traffic");
+  assert(relatedCollision.details.impactSpeedKmh > 0);
 });
 
 runTest("bus priority can extend either signal phase", () => {
@@ -350,9 +527,10 @@ runTest("setConfig clamps zero speed limit", () => {
 
 runTest("setConfig coerces boolean controls", () => {
   const sim = new TrafficSimulation({ random: deterministicRandom() });
-  sim.setConfig({ incident: 1, busPriority: 0 });
+  sim.setConfig({ incident: 1, busPriority: 0, redLightRunning: 1 });
   assert.strictEqual(sim.config.incident, true);
   assert.strictEqual(sim.config.busPriority, false);
+  assert.strictEqual(sim.config.redLightRunning, true);
 });
 
 runTest("setConfig validates road condition", () => {
@@ -912,7 +1090,7 @@ runTest("intersection incident keeps its detour lane clear of existing crashes",
   assert.strictEqual(sim.incidentTargetLane(sim.activeIncident), 0);
 });
 
-runTest("delayed default intersection incident still produces avoidance lane changes", () => {
+runTest("delayed default intersection incident starts from moving green traffic", () => {
   const sim = new TrafficSimulation({
     config: {
       mode: "intersection",
@@ -925,22 +1103,12 @@ runTest("delayed default intersection incident still produces avoidance lane cha
   });
   while (!sim.activeIncident && sim.time < 900) sim.step(0.08);
   assert(sim.activeIncident, "default scenario did not generate an incident");
-  const incidentStartedAt = sim.time;
-  for (let index = 0; index < 2500; index += 1) sim.step(0.08);
-  const incidentLaneChanges = sim.eventLog.filter((event) => (
-    event.time >= incidentStartedAt &&
-    event.type === "lane-change-start" &&
-    event.details.reason === "incident"
-  ));
-  const completedVehicleIds = new Set(sim.eventLog
-    .filter((event) => event.time >= incidentStartedAt && event.type === "lane-change-complete")
-    .map((event) => event.details.vehicleId));
-
-  assert(incidentLaneChanges.length > 0, "default delayed incident did not produce an avoidance lane change");
-  assert(
-    incidentLaneChanges.some((event) => completedVehicleIds.has(event.details.vehicleId)),
-    "default delayed incident did not complete an avoidance lane change"
-  );
+  const route = ROUTES[sim.activeIncident.direction];
+  assert.strictEqual(sim.lastSignal[route.signal], "green");
+  assert.notStrictEqual(sim.activeIncident.triggerVehicleId, null);
+  const trigger = sim.vehicles.find((vehicle) => vehicle.id === sim.activeIncident.triggerVehicleId);
+  assert(trigger, "incident trigger vehicle should still be present when the incident starts");
+  assert(trigger.currentSpeed > 0, "incident trigger vehicle should be moving");
 });
 
 runTest("highway incident triggers a human decision delay before changing lanes", () => {

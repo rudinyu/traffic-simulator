@@ -5,6 +5,7 @@ test("simulator renders, localizes, switches scenarios, and restores state", asy
   page.on("pageerror", (error) => errors.push(error.message));
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "Traffic Simulation Console" })).toBeVisible();
+  await expect(page.getByText("Red-light Violations", { exact: true })).toBeVisible();
   await expect(page.locator("#vehicleCount")).not.toHaveText("0", { timeout: 5000 });
   await expect(page.locator("#incidentStatus")).toContainText("min");
   await expect(page.locator("#incidentStatus")).toContainText("sec");
@@ -33,11 +34,14 @@ test("simulator renders, localizes, switches scenarios, and restores state", asy
 
   await page.locator("#language").selectOption("zh-TW");
   await expect(page.getByRole("heading", { name: "交通模擬控制台" })).toBeVisible();
+  await expect(page.getByText("闖紅燈違規", { exact: true })).toBeVisible();
+  await page.locator("#redLightRunning").check();
   await page.locator("#mode").selectOption("highway");
   await page.locator("#rampMerge").check();
   await page.locator("#laneClosure").check();
   await expect(page.locator("#reactionTime")).toBeEnabled();
   await expect(page.locator("#turningTraffic")).toBeDisabled();
+  await expect(page.locator("#redLightRunning")).toBeDisabled();
 
   await page.locator("#toggleRun").click();
   await page.locator("#exportScenario").click();

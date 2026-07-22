@@ -27,6 +27,7 @@
     laneClosure: false,
     emergencyVehicles: false,
     pedestrianPhase: false,
+    redLightRunning: false,
     seed: "demo-traffic"
   });
   const PX_PER_METER = 10;
@@ -47,12 +48,14 @@
   const INCIDENT_LOOKAHEAD_PX = 60;
   const INCIDENT_APPROACH_SPEED_RATIO = 0.58;
   const INCIDENT_BRAKE_GAIN = 3;
+  const INCIDENT_TRIGGER_LEAD_PX = 70;
   const INCIDENT_MIN_DURATION_SECONDS = 30 * 60;
   const INCIDENT_MAX_DURATION_SECONDS = 2 * 60 * 60;
   const INCIDENT_FIRST_DELAY_MIN_SECONDS = 5 * 60;
   const INCIDENT_FIRST_DELAY_MAX_SECONDS = 15 * 60;
   const INCIDENT_REPEAT_DELAY_MIN_SECONDS = 15 * 60;
   const INCIDENT_REPEAT_DELAY_MAX_SECONDS = 45 * 60;
+  const INCIDENT_ACTIVATION_RETRY_SECONDS = 1;
   const LANE_CHANGE_BACK_CLEARANCE_PX = 58;
   const LANE_CHANGE_FRONT_CLEARANCE_PX = 82;
   const LANE_CHANGE_SPEED_RATIO = 0.72;
@@ -69,6 +72,8 @@
   const RED_LIGHT_LOOKAHEAD_PX = 95;
   const RED_LIGHT_STOP_BUFFER_PX = 12;
   const RED_LIGHT_BRAKE_GAIN = 3;
+  const RED_LIGHT_VIOLATION_APPROACH_PX = 65;
+  const RED_LIGHT_VIOLATION_DURATION_SECONDS = 6;
   const FOLLOWING_GAP_PX = 54;
   const VEHICLE_BUFFER_PX = 10;
   const FOLLOWING_BRAKE_GAIN = 2.8;
@@ -111,6 +116,7 @@
     Object.freeze({ type: "normal", reactionScale: 1, headwayScale: 1, accelerationScale: 1, brakingScale: 1 }),
     Object.freeze({ type: "assertive", reactionScale: 0.86, headwayScale: 0.88, accelerationScale: 1.12, brakingScale: 1.05 })
   ]);
+  const RED_LIGHT_RISK_BY_DRIVER = Object.freeze({ cautious: 0.008, normal: 0.035, assertive: 0.12 });
 
   const ROAD_MODEL = Object.freeze({
     version: 1,
@@ -349,6 +355,8 @@
       speed,
       currentSpeed: speed,
       driver,
+      redLightRisk: RED_LIGHT_RISK_BY_DRIVER[driver.type] || RED_LIGHT_RISK_BY_DRIVER.normal,
+      redLightViolationUntil: 0,
       massKg: isBus ? 12500 : 1550,
       width: VEHICLE_WIDTH_METERS * PX_PER_METER,
       length: size,
@@ -546,6 +554,12 @@
     };
   }
 
+  function greenSignalAxis(signal) {
+    if (signal && signal.ew === "green") return "ew";
+    if (signal && signal.ns === "green") return "ns";
+    return null;
+  }
+
   class TrafficSimulation {
     constructor(options) {
       const opts = options || {};
@@ -600,7 +614,85 @@
       this.scheduleNextIncident(true);
     }
 
-    activateIncident(durationSeconds) {
+    incidentPlacementCandidates(requireMovingTraffic) {
+      const routeTable = this.config.mode === "highway" ? HIGHWAY_ROUTES : ROUTES;
+      const laneClosure = this.configuredLaneClosure();
+      const routeRange = this.config.mode === "highway" ? [0.36, 0.68] : [0.24, 0.36];
+      const placements = [];
+
+      for (const direction of this.activeDirections()) {
+        const route = routeTable[direction];
+        if (requireMovingTraffic && route.signal && this.lastSignal[route.signal] !== "green") continue;
+
+        for (let sourceLane = 0; sourceLane < LANES_PER_DIRECTION; sourceLane += 1) {
+          const targetLane = sourceLane === 0 ? 1 : 0;
+          if (!requireMovingTraffic) {
+            const targetBlockedByCrash = this.vehicles.some((vehicle) => (
+              vehicle.crashed &&
+              vehicle.direction === direction &&
+              activeVehicleLanes(vehicle).includes(targetLane)
+            ));
+            const targetBlockedByClosure = Boolean(
+              laneClosure &&
+              laneClosure.direction === direction &&
+              laneClosure.lane === targetLane
+            );
+            if (targetBlockedByCrash || targetBlockedByClosure) continue;
+            placements.push({ direction, lane: sourceLane, triggerVehicle: null });
+            continue;
+          }
+
+          for (const vehicle of this.vehicles) {
+            if (
+              vehicle.direction !== direction ||
+              vehicle.lane !== sourceLane ||
+              vehicle.laneChanging ||
+              vehicle.crashed ||
+              vehicle.currentSpeed < WAITING_SPEED_MPS
+            ) continue;
+            const routeProgress = (vehicle.position - route.start) / (route.end - route.start);
+            const distanceToStop = route.signal
+              ? (STOP_LINES[direction] - vehicle.position) * route.sign
+              : Infinity;
+            const targetBlockedNearby = this.vehicles.some((other) => (
+              other.crashed &&
+              other.direction === direction &&
+              activeVehicleLanes(other).includes(targetLane) &&
+              Math.abs(other.position - vehicle.position) < OVERTAKE_LOOKAHEAD_PX
+            ));
+            const closureBlockedNearby = Boolean(
+              laneClosure &&
+              laneClosure.direction === direction &&
+              laneClosure.lane === targetLane &&
+              Math.abs(laneClosure.position - vehicle.position) < OVERTAKE_LOOKAHEAD_PX
+            );
+            if (
+              routeProgress >= routeRange[0] &&
+              routeProgress <= routeRange[1] &&
+              distanceToStop > INCIDENT_TRIGGER_LEAD_PX + INCIDENT_CLEARANCE_PX &&
+              !targetBlockedNearby &&
+              !closureBlockedNearby
+            ) {
+              placements.push({ direction, lane: sourceLane, triggerVehicle: vehicle });
+            }
+          }
+        }
+      }
+      return placements;
+    }
+
+    activateIncident(durationSeconds, options) {
+      const requireMovingTraffic = Boolean(options && options.requireMovingTraffic);
+      const placementCandidates = this.incidentPlacementCandidates(requireMovingTraffic);
+      if (requireMovingTraffic && placementCandidates.length === 0) return null;
+      const directions = this.activeDirections();
+      const placement = placementCandidates.length > 0
+        ? placementCandidates[Math.floor(this.incidentRandom() * placementCandidates.length)]
+        : {
+          direction: directions[Math.floor(this.incidentRandom() * directions.length)],
+          lane: Math.floor(this.incidentRandom() * LANES_PER_DIRECTION),
+          triggerVehicle: null
+        };
       const requestedDuration = Number(durationSeconds);
       const configuredSeverity = Object.prototype.hasOwnProperty.call(INCIDENT_SEVERITIES, this.config.incidentSeverity)
         ? this.config.incidentSeverity
@@ -615,33 +707,6 @@
         INCIDENT_MIN_DURATION_SECONDS,
         INCIDENT_MAX_DURATION_SECONDS
       );
-      const directions = this.activeDirections();
-      const laneClosure = this.configuredLaneClosure();
-      const placementCandidates = [];
-      for (const candidateDirection of directions) {
-        for (let sourceLane = 0; sourceLane < LANES_PER_DIRECTION; sourceLane += 1) {
-          const targetLane = sourceLane === 0 ? 1 : 0;
-          const targetBlockedByCrash = this.vehicles.some((vehicle) => (
-            vehicle.crashed &&
-            vehicle.direction === candidateDirection &&
-            activeVehicleLanes(vehicle).includes(targetLane)
-          ));
-          const targetBlockedByClosure = Boolean(
-            laneClosure &&
-            laneClosure.direction === candidateDirection &&
-            laneClosure.lane === targetLane
-          );
-          if (!targetBlockedByCrash && !targetBlockedByClosure) {
-            placementCandidates.push({ direction: candidateDirection, lane: sourceLane });
-          }
-        }
-      }
-      const placement = placementCandidates.length > 0
-        ? placementCandidates[Math.floor(this.incidentRandom() * placementCandidates.length)]
-        : {
-          direction: directions[Math.floor(this.incidentRandom() * directions.length)],
-          lane: Math.floor(this.incidentRandom() * LANES_PER_DIRECTION)
-        };
       const direction = placement.direction;
       const routeTable = this.config.mode === "highway" ? HIGHWAY_ROUTES : ROUTES;
       const route = routeTable[direction];
@@ -649,6 +714,9 @@
       const routeFraction = this.config.mode === "highway"
         ? randomBetween(this.incidentRandom, 0.36, 0.68)
         : randomBetween(this.incidentRandom, 0.24, 0.36);
+      const position = placement.triggerVehicle
+        ? placement.triggerVehicle.position + route.sign * INCIDENT_TRIGGER_LEAD_PX
+        : route.start + (route.end - route.start) * routeFraction;
       this.activeIncident = {
         id: `incident-${this.incidentCount + 1}`,
         startedAt: this.time,
@@ -656,7 +724,8 @@
         durationSeconds: duration,
         direction,
         lane,
-        position: route.start + (route.end - route.start) * routeFraction,
+        position,
+        triggerVehicleId: placement.triggerVehicle ? placement.triggerVehicle.id : null,
         severity,
         speedRatio: severityModel.speedRatio,
         length: severityModel.lengthMeters * PX_PER_METER
@@ -669,6 +738,7 @@
         lane,
         severity,
         position: Number(this.activeIncident.position.toFixed(2)),
+        triggerVehicleId: this.activeIncident.triggerVehicleId,
         clearsAt: Number(this.activeIncident.clearsAt.toFixed(2))
       });
       return this.activeIncident;
@@ -691,7 +761,8 @@
       if (this.activeIncident && this.time >= this.activeIncident.clearsAt) {
         this.clearIncident();
       } else if (!this.activeIncident && this.nextIncidentAt !== null && this.time >= this.nextIncidentAt) {
-        this.activateIncident();
+        const incident = this.activateIncident(undefined, { requireMovingTraffic: true });
+        if (!incident) this.nextIncidentAt = this.time + INCIDENT_ACTIVATION_RETRY_SECONDS;
       }
     }
 
@@ -767,6 +838,7 @@
         this.spawnTimers["ramp:east"] = 2.5;
       }
       this.lastSignal = this.computeSignal(null);
+      this.lastGreenSignal = greenSignalAxis(this.lastSignal);
     }
 
     setConfig(config) {
@@ -776,7 +848,7 @@
       const previousIncidentEnabled = this.config.incident;
       const previousIncidentFrequency = this.config.incidentFrequency;
       const validated = {};
-      for (const key of ["mode", "demand", "speedLimit", "signalCycle", "greenSplit", "incident", "busPriority", "roadCondition", "reactionTime", "brakeBuildTime", "incidentFrequency", "incidentSeverity", "turningTraffic", "rampMerge", "laneClosure", "emergencyVehicles", "pedestrianPhase", "seed"]) {
+      for (const key of ["mode", "demand", "speedLimit", "signalCycle", "greenSplit", "incident", "busPriority", "roadCondition", "reactionTime", "brakeBuildTime", "incidentFrequency", "incidentSeverity", "turningTraffic", "rampMerge", "laneClosure", "emergencyVehicles", "pedestrianPhase", "redLightRunning", "seed"]) {
         if (Object.prototype.hasOwnProperty.call(source, key)) {
           validated[key] = source[key];
         }
@@ -815,7 +887,7 @@
           ? validated.incidentSeverity
           : "mixed";
       }
-      for (const key of ["turningTraffic", "rampMerge", "laneClosure", "emergencyVehicles", "pedestrianPhase"]) {
+      for (const key of ["turningTraffic", "rampMerge", "laneClosure", "emergencyVehicles", "pedestrianPhase", "redLightRunning"]) {
         if (validated[key] !== undefined) validated[key] = Boolean(validated[key]);
       }
       if (validated.reactionTime !== undefined) {
@@ -854,7 +926,10 @@
       if (this.config.mode === "intersection") {
         const opposingAxis = nextSignal.ew === "green" ? "ns" : "ew";
         const intersectionOccupied = this.vehicles.some((vehicle) => {
-          return !vehicle.crashed && vehicle.route.signal === opposingAxis && this.vehicleInIntersection(vehicle);
+          return !vehicle.crashed &&
+            !this.redLightViolationIsActive(vehicle) &&
+            vehicle.route.signal === opposingAxis &&
+            this.vehicleInIntersection(vehicle);
         });
         this.lastSignal = intersectionOccupied
           ? { ew: "red", ns: "red" }
@@ -862,7 +937,69 @@
       } else {
         this.lastSignal = nextSignal;
       }
+      const currentGreenSignal = greenSignalAxis(this.lastSignal);
+      if (
+        this.config.redLightRunning &&
+        currentGreenSignal &&
+        this.lastGreenSignal &&
+        currentGreenSignal !== this.lastGreenSignal
+      ) {
+        this.startRedLightViolation(this.lastGreenSignal, currentGreenSignal);
+      }
+      if (currentGreenSignal) this.lastGreenSignal = currentGreenSignal;
       return this.lastSignal;
+    }
+
+    redLightViolationIsActive(vehicle) {
+      return Boolean(vehicle && !vehicle.crashed && Number(vehicle.redLightViolationUntil) > this.time);
+    }
+
+    startRedLightViolation(redSignal, conflictingGreenSignal) {
+      const closestByLane = new Map();
+      for (const vehicle of this.vehicles) {
+        if (
+          vehicle.crashed ||
+          vehicle.isBus ||
+          vehicle.isEmergency ||
+          vehicle.route.signal !== redSignal ||
+          this.redLightViolationIsActive(vehicle)
+        ) continue;
+        const distanceToStop = (STOP_LINES[vehicle.direction] - vehicle.position) * vehicle.route.sign;
+        if (distanceToStop <= 0 || distanceToStop > RED_LIGHT_VIOLATION_APPROACH_PX) continue;
+        const key = `${vehicle.direction}:${vehicle.lane}`;
+        const current = closestByLane.get(key);
+        if (!current || distanceToStop < current.distanceToStop) {
+          closestByLane.set(key, { vehicle, distanceToStop });
+        }
+      }
+
+      const candidates = Array.from(closestByLane.values()).sort((first, second) => (
+        first.distanceToStop - second.distanceToStop || first.vehicle.id - second.vehicle.id
+      ));
+      for (const candidate of candidates) {
+        const vehicle = candidate.vehicle;
+        const risk = clamp(
+          Number.isFinite(vehicle.redLightRisk)
+            ? vehicle.redLightRisk
+            : RED_LIGHT_RISK_BY_DRIVER[vehicle.driver?.type] || RED_LIGHT_RISK_BY_DRIVER.normal,
+          0,
+          1
+        );
+        if (this.random() >= risk) continue;
+        vehicle.redLightViolationUntil = this.time + RED_LIGHT_VIOLATION_DURATION_SECONDS;
+        vehicle.waiting = false;
+        vehicle.braking = false;
+        vehicle.brakeDelayRemaining = 0;
+        vehicle.brakeTargetSpeed = vehicle.speed;
+        this.recordEvent("red-light-run", {
+          vehicleId: vehicle.id,
+          direction: vehicle.direction,
+          lane: vehicle.lane,
+          conflictingGreenSignal
+        });
+        return vehicle;
+      }
+      return null;
     }
 
     vehicleInIntersection(vehicle) {
@@ -897,10 +1034,10 @@
     step(deltaSeconds) {
       const dt = clamp(deltaSeconds ?? 0, 0, MAX_STEP_SECONDS);
       this.time += dt;
-      this.updateIncidentState();
       this.removeResolvedCrashes();
       this.spawnVehicles(dt);
       this.refreshSignal(this.getPrioritySignal());
+      this.updateIncidentState();
       this.moveVehicles(dt);
       this.removeCompleted();
       this.detectCollisions();
@@ -1105,6 +1242,7 @@
     enforceRedLightBoundary(vehicle, previousPosition) {
       if (this.config.mode === "highway" || !vehicle.route.signal) return;
       if (this.lastSignal[vehicle.route.signal] !== "red") return;
+      if (this.redLightViolationIsActive(vehicle)) return;
       const stopLine = STOP_LINES[vehicle.direction];
       const distanceBefore = (stopLine - previousPosition) * vehicle.route.sign;
       const safeBoundary = stopLine - vehicle.route.sign * (RED_LIGHT_STOP_BUFFER_PX + vehicle.length / 2);
@@ -1475,6 +1613,7 @@
         );
         if (
           signal === "red" &&
+          !this.redLightViolationIsActive(vehicle) &&
           distanceToStop > 0 &&
           distanceToStop < signalLookahead
         ) {
@@ -1691,6 +1830,7 @@
         direction: this.activeIncident ? this.activeIncident.direction : null,
         lane: this.activeIncident ? this.activeIncident.lane : null,
         position: this.activeIncident ? this.activeIncident.position : null,
+        triggerVehicleId: this.activeIncident ? this.activeIncident.triggerVehicleId : null,
         severity: this.activeIncident ? this.activeIncident.severity : null,
         speedRatio: this.activeIncident ? this.activeIncident.speedRatio : null,
         length: this.activeIncident ? this.activeIncident.length : null,
@@ -1772,6 +1912,7 @@
           nextIncidentAt: this.nextIncidentAt,
           activeIncident: this.activeIncident ? Object.assign({}, this.activeIncident) : null,
           lastSignal: Object.assign({}, this.lastSignal),
+          lastGreenSignal: this.lastGreenSignal,
           randomState: typeof this.random.getState === "function" ? this.random.getState() : null,
           incidentRandomState: typeof this.incidentRandom.getState === "function" ? this.incidentRandom.getState() : null,
           lastMetricSampleAt: this.lastMetricSampleAt,
@@ -1810,6 +1951,9 @@
       this.nextIncidentAt = state.nextIncidentAt === null ? null : Number(state.nextIncidentAt);
       this.activeIncident = state.activeIncident ? Object.assign({}, state.activeIncident) : null;
       this.lastSignal = Object.assign({}, this.computeSignal(null), state.lastSignal || {});
+      this.lastGreenSignal = state.lastGreenSignal === "ew" || state.lastGreenSignal === "ns"
+        ? state.lastGreenSignal
+        : greenSignalAxis(this.lastSignal) || greenSignalAxis(this.computeSignal(null));
       this.eventLog = Array.isArray(scenario.events) ? scenario.events.slice(-500).map((event) => ({
         time: Number(event.time) || 0,
         type: String(event.type || "event"),

@@ -10,13 +10,14 @@ intersection congestion, highway flow, throughput, and delayed braking.
 
 - Real-time Canvas visualization of four-way intersection traffic.
 - Adjustable traffic demand, speed limit, signal cycle, and green split.
-- Seeded random incidents with automatic 30–120 simulated-minute clearance and repeat scheduling.
+- Seeded random incidents triggered by moving traffic; intersection incidents wait for a green approach instead of appearing in a stopped red-light queue, then clear automatically after 30–120 simulated minutes.
 - Highway mode with opposing traffic streams and no intersection signals.
 - Adjustable driver reaction time and brake build-up time to study braking delay.
 - Road-condition presets for dry, wet, and icy pavement with friction-limited acceleration and braking.
 - Per-vehicle driver profiles that vary reaction time, desired headway, acceleration, and braking capability.
 - Human-like lane-change behavior with perception delay, gap acceptance, turn signals, cooldowns, and smooth multi-second trajectories.
 - Mid-maneuver gap reassessment, safe lane-change aborts, emergency-vehicle yielding, and incident avoidance.
+- Optional seeded red-light violations during signal changes, with driver-profile risk, event logging, and collision detection against conflicting green traffic.
 - Physics-based acceleration, braking distance, lane following, and mass-weighted post-impact momentum with frictional settling.
 - Two lanes per direction with predictive collision avoidance and intersection clearance phases.
 - Turning traffic, pedestrian all-red phases, highway ramp merging, and persistent work-zone lane closures.
@@ -76,12 +77,13 @@ software is provided without warranty.
 - 使用物理式加速度、煞車距離、跟車安全距離、換道與碰撞反應。
 - 換道包含駕駛察覺延遲、前後車距判斷、方向燈、冷卻時間與 2–4 秒平滑橫移。
 - 換道途中會重新檢查前後車距，空間不足時會安全中止；一般車輛也會避讓緊急車輛。
+- 可選擇啟用依 Seed 重現的號誌切換闖紅燈行為，依駕駛型態決定風險，並記錄事件及偵測與綠燈車流的碰撞。
 - 碰撞依車重與速度保留撞擊後動量，再透過摩擦逐步停止，不會立即消失或穿越障礙物。
 - 每個方向兩條車道，具備碰撞預測與路口清空號誌階段。
 - 支援轉向車流、行人全紅時相、高速公路匝道匯入與施工封道。
 - 模擬核心與 Canvas 畫面共用同一份道路資料模型，降低道路切割錯位。
 - 支援情境 seed 與完整 JSON 狀態匯出/匯入，可精確還原車輛、亂數狀態、事故、事件與指標歷史。
-- 可啟用依 Seed 重現的隨機事故；事故會在模擬時間 30–120 分鐘後自動解除並排定下一次事件。
+- 可啟用依 Seed 重現的隨機事故；路口事故只由綠燈方向的移動車流觸發，不會出現在紅燈靜止車隊，並會在模擬時間 30–120 分鐘後自動解除。
 - 支援 1x、10x、60x 模擬速度，方便觀察長時間事故生命週期。
 - 提供時間序列圖、事件紀錄、CSV 匯出與基準情境比較。
 - 使用空間網格縮小碰撞候選範圍，並限制高速模擬每幀運算量。
