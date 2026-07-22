@@ -414,15 +414,43 @@
     vehicle.headingDirection = targetDirection;
   }
 
+  function vehicleBounds(vehicle) {
+    const horizontal = DIRECTION_VECTORS[vehicle.headingDirection || vehicle.direction]?.axis === "x";
+    const halfWidth = horizontal ? vehicle.length / 2 : (vehicle.width || 20) / 2;
+    const halfHeight = horizontal ? (vehicle.width || 20) / 2 : vehicle.length / 2;
+    return {
+      left: vehicle.x - halfWidth,
+      right: vehicle.x + halfWidth,
+      top: vehicle.y - halfHeight,
+      bottom: vehicle.y + halfHeight
+    };
+  }
+
   function vehiclesOverlap(first, second) {
+    const firstBounds = vehicleBounds(first);
+    const secondBounds = vehicleBounds(second);
+    return firstBounds.left < secondBounds.right &&
+      firstBounds.right > secondBounds.left &&
+      firstBounds.top < secondBounds.bottom &&
+      firstBounds.bottom > secondBounds.top;
+  }
+
+  function crossTrafficContactInsideIntersection(first, second) {
     const firstHorizontal = DIRECTION_VECTORS[first.headingDirection || first.direction]?.axis === "x";
     const secondHorizontal = DIRECTION_VECTORS[second.headingDirection || second.direction]?.axis === "x";
-    const firstHalfWidth = firstHorizontal ? first.length / 2 : 10;
-    const firstHalfHeight = firstHorizontal ? (first.width || 20) / 2 : first.length / 2;
-    const secondHalfWidth = secondHorizontal ? second.length / 2 : (second.width || 20) / 2;
-    const secondHalfHeight = secondHorizontal ? (second.width || 20) / 2 : second.length / 2;
-    return Math.abs(first.x - second.x) < firstHalfWidth + secondHalfWidth &&
-      Math.abs(first.y - second.y) < firstHalfHeight + secondHalfHeight;
+    if (firstHorizontal === secondHorizontal) return true;
+    const firstBounds = vehicleBounds(first);
+    const secondBounds = vehicleBounds(second);
+    const contact = {
+      left: Math.max(firstBounds.left, secondBounds.left),
+      right: Math.min(firstBounds.right, secondBounds.right),
+      top: Math.max(firstBounds.top, secondBounds.top),
+      bottom: Math.min(firstBounds.bottom, secondBounds.bottom)
+    };
+    return contact.left < INTERSECTION_BOUNDS.right &&
+      contact.right > INTERSECTION_BOUNDS.left &&
+      contact.top < INTERSECTION_BOUNDS.bottom &&
+      contact.bottom > INTERSECTION_BOUNDS.top;
   }
 
   function velocityVector(vehicle) {
@@ -495,6 +523,12 @@
     const horizontalAlpha = pathCrossingAlpha(hPreviousX, horizontal.x, vertical.x);
     const verticalAlpha = pathCrossingAlpha(vPreviousY, vertical.y, horizontal.y);
     if (horizontalAlpha === null || verticalAlpha === null) return false;
+    if (
+      vertical.x < INTERSECTION_BOUNDS.left ||
+      vertical.x > INTERSECTION_BOUNDS.right ||
+      horizontal.y < INTERSECTION_BOUNDS.top ||
+      horizontal.y > INTERSECTION_BOUNDS.bottom
+    ) return false;
     // Allows small frame-to-frame timing mismatch while requiring both paths to reach the conflict point together.
     return Math.abs(horizontalAlpha - verticalAlpha) <= PATH_CROSSING_TIME_TOLERANCE;
   }
@@ -1733,7 +1767,7 @@
           const [firstIndex, secondIndex] = pair.split(":").map(Number);
           const first = this.vehicles[firstIndex];
           const second = this.vehicles[secondIndex];
-          const overlapping = vehiclesOverlap(first, second);
+          const overlapping = vehiclesOverlap(first, second) && crossTrafficContactInsideIntersection(first, second);
           const sameFlowPair = sameFlow(first, second);
           const leader = sameFlowPair ? (first.progress >= second.progress ? first : second) : null;
           const follower = sameFlowPair ? (leader === first ? second : first) : null;

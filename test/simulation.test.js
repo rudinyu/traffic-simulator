@@ -307,7 +307,7 @@ runTest("disabled red-light violations keep risky drivers stopped", () => {
 runTest("seeded red-light violations can collide with conflicting green traffic", () => {
   const sim = new TrafficSimulation({
     config: {
-      seed: "red-run-1",
+      seed: "red-run-2",
       demand: 70,
       incident: false,
       busPriority: false,
@@ -723,6 +723,62 @@ runTest("collided vehicles conserve momentum before settling", () => {
   assert.strictEqual(second.currentSpeed, 0);
   assert.strictEqual(sim.getMetrics().collisionVehicles, 2);
   assert(sim.getMetrics().collisionSeverityKmh > 0, "collision should record relative impact speed");
+});
+
+runTest("legal stop-line queues do not collide with cross traffic at lane corners", () => {
+  const sim = new TrafficSimulation({
+    config: { incident: false, redLightRunning: false, seed: "demo-traffic" }
+  });
+  while (sim.time < 45) sim.step(0.08);
+  assert.strictEqual(
+    sim.eventLog.some((event) => event.type === "collision"),
+    false,
+    "signal-compliant traffic should not produce corner-overlap collisions"
+  );
+});
+
+runTest("cross-traffic contact outside the intersection is not a collision", () => {
+  const sim = new TrafficSimulation({ random: deterministicRandom() });
+  const stoppedSouthbound = {
+    id: 1,
+    direction: "south",
+    headingDirection: "south",
+    route: Object.assign({}, ROUTES.south),
+    position: 257.5,
+    previousPosition: 257.5,
+    progress: 337.5,
+    x: 546.1,
+    y: 257.5,
+    previousX: 546.1,
+    previousY: 257.5,
+    currentSpeed: 0,
+    length: 45,
+    width: 20,
+    lane: 1,
+    crashed: false
+  };
+  const passingEastbound = {
+    id: 2,
+    direction: "east",
+    headingDirection: "east",
+    route: Object.assign({}, ROUTES.east),
+    position: 514.6,
+    previousPosition: 505,
+    progress: 594.6,
+    x: 514.6,
+    y: 288.5,
+    previousX: 505,
+    previousY: 288.5,
+    currentSpeed: 12.19,
+    length: 45,
+    width: 20,
+    lane: 1,
+    crashed: false
+  };
+  sim.vehicles = [stoppedSouthbound, passingEastbound];
+  sim.detectCollisions();
+  assert.strictEqual(stoppedSouthbound.crashed, false);
+  assert.strictEqual(passingEastbound.crashed, false);
 });
 
 runTest("following model brakes before a high closing-speed collision", () => {
